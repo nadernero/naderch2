@@ -558,6 +558,10 @@
                     <div id="calendarPage" class="page-content hidden-view">
                         <h1 class="h1 mb-6">التقويم</h1>
                         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <div id="calendarServiceFilterContainer" class="hidden-view mb-4 max-w-lg">
+    <label for="calendarServiceSelector" class="block mb-2 font-bold">اختر الخدمة:</label>
+    <select id="calendarServiceSelector" class="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"></select>
+</div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-w-lg">
                                  <div>
                                     <label for="calendarYearSelector" class="block mb-2 font-bold">اختر السنة:</label>
@@ -994,7 +998,6 @@ let calendarEventsCache = {};
             
             DOMElements.sidebarLinks.querySelector('[data-page="servantsPage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.sidebarLinks.querySelector('[data-page="attendancePage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
-            DOMElements.sidebarLinks.querySelector('[data-page="calendarPage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.announcementsBoardLink.classList.toggle('hidden-view', !isGeneralSecretaryMode);
             DOMElements.correspondenceCenterLink.classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.correspondenceLink.classList.toggle('hidden-view', !isGeneralSecretaryMode);
@@ -1066,11 +1069,10 @@ let calendarEventsCache = {};
             if (pageId === 'followUpPage') updateFollowUpPage();
             if (pageId === 'servantsPage') displayUpcomingBirthdays();
             if (pageId === 'attendancePage' && !isGeneralSecretaryMode) loadAttendancePage();
-            if (pageId === 'calendarPage' && !isGeneralSecretaryMode) {
-                loadCalendarPage();
-                listenForCalendarEvents();
-            }
-            if (pageId === 'reportsPage') loadReportsPage();
+if (pageId === 'calendarPage') { // تم التعديل هنا
+    loadCalendarPage();
+    // لا تقم باستدعاء listenForCalendarEvents هنا، سيتم استدعاؤها من داخل loadCalendarPage أو عند تغيير الفلتر
+}            if (pageId === 'reportsPage') loadReportsPage();
             if (pageId === 'serviceAnnouncementsPage') markServiceAnnouncementsAsRead();
         }
 
@@ -1594,60 +1596,110 @@ let calendarEventsCache = {};
         }
 
        // --- CALENDAR FUNCTIONS ---
-        function listenForCalendarEvents() {
-            if (isLocalMode) {
-                calendarEventsCache = getLocalData(`church-app-calendar-${currentServiceName}`) || {};
-                const year = parseInt(DOMElements.calendarYearSelector.value);
-                const month = parseInt(DOMElements.calendarMonthSelector.value);
-                if (!isNaN(year) && !isNaN(month)) {
-                    renderCalendar(year, month);
-                }
-                return;
-            }
+function listenForCalendarEvents(serviceNameToListen) {
+    if (isLocalMode) {
+        // Local mode logic can be expanded later if needed.
+        return;
+    }
 
-            if (calendarEventsUnsubscribe) calendarEventsUnsubscribe();
-            const eventsCol = collection(db, 'services', currentServiceName, 'calendarEvents');
-            calendarEventsUnsubscribe = onSnapshot(eventsCol, (snapshot) => {
-                calendarEventsCache = {};
+    if (calendarEventsUnsubscribe) calendarEventsUnsubscribe();
+
+    // If no service is selected (e.g., admin first opens the page), clear the calendar.
+    if (!serviceNameToListen) {
+         calendarEventsCache = {};
+         const year = parseInt(DOMElements.calendarYearSelector.value);
+         const month = parseInt(DOMElements.calendarMonthSelector.value);
+         if (!isNaN(year) && !isNaN(month)) renderCalendar(year, month);
+         return;
+    }
+
+    if (serviceNameToListen === 'all') {
+        // --- Logic to fetch ALL events for the admin ---
+        const servicesToFetch = services.filter(s => s.name !== 'الامين العام');
+        const eventsPromises = servicesToFetch.map(s => 
+            getDocs(collection(db, 'services', s.name, 'calendarEvents'))
+        );
+
+        Promise.all(eventsPromises).then(snapshotsArray => {
+            calendarEventsCache = {};
+            snapshotsArray.forEach((snapshot, index) => {
+                const serviceName = servicesToFetch[index].name;
                 snapshot.docs.forEach(doc => {
-                    calendarEventsCache[doc.id] = doc.data();
+                    const eventData = doc.data();
+eventData.serviceName = serviceName; // Important: Add service name to the event
+eventData.date = doc.id; // [سطر جديد] هذا السطر يخزن تاريخ الحدث داخل بياناته
+calendarEventsCache[doc.id + '_' + serviceName] = eventData; // Use unique key
                 });
-                const year = parseInt(DOMElements.calendarYearSelector.value);
-                const month = parseInt(DOMElements.calendarMonthSelector.value);
-                if (!isNaN(year) && !isNaN(month)) {
-                    renderCalendar(year, month);
-                }
-            }, (error) => {
-                console.error("Error listening for calendar events:", error);
             });
-        }
-
-        function loadCalendarPage() {
-            const today = new Date();
-            const currentYear = today.getFullYear();
-            const currentMonth = today.getMonth(); // 0-11
-            const startYear = 2024;
-            const endYear = currentYear + 5;
-
-            // Populate Year Selector
-            DOMElements.calendarYearSelector.innerHTML = ''; // Clear previous options
-            for (let i = endYear; i >= startYear; i--) {
-                DOMElements.calendarYearSelector.innerHTML += `<option value="${i}">${i}</option>`;
+            const year = parseInt(DOMElements.calendarYearSelector.value);
+            const month = parseInt(DOMElements.calendarMonthSelector.value);
+            if (!isNaN(year) && !isNaN(month)) {
+                renderCalendar(year, month);
             }
-            DOMElements.calendarYearSelector.value = currentYear;
-            
-            // Populate Month Selector
-            const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-            DOMElements.calendarMonthSelector.innerHTML = ''; // Clear previous options
-            months.forEach((month, index) => {
-                DOMElements.calendarMonthSelector.innerHTML += `<option value="${index}">${month}</option>`;
-            });
-            DOMElements.calendarMonthSelector.value = currentMonth;
-            
-            // Initial render
-            renderCalendar(currentYear, currentMonth);
-        }
+        });
 
+    } else {
+        // --- Original logic for a SINGLE service ---
+        const eventsCol = collection(db, 'services', serviceNameToListen, 'calendarEvents');
+        calendarEventsUnsubscribe = onSnapshot(eventsCol, (snapshot) => {
+            calendarEventsCache = {};
+            snapshot.docs.forEach(doc => {
+                calendarEventsCache[doc.id] = doc.data();
+            });
+            const year = parseInt(DOMElements.calendarYearSelector.value);
+            const month = parseInt(DOMElements.calendarMonthSelector.value);
+            if (!isNaN(year) && !isNaN(month)) {
+                renderCalendar(year, month);
+            }
+        }, (error) => {
+            console.error("Error listening for calendar events:", error);
+        });
+    }
+}
+function loadCalendarPage() {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    const startYear = 2024;
+    const endYear = currentYear + 5;
+
+    // Populate Year Selector
+    DOMElements.calendarYearSelector.innerHTML = '';
+    for (let i = endYear; i >= startYear; i--) {
+        DOMElements.calendarYearSelector.innerHTML += `<option value="${i}">${i}</option>`;
+    }
+    DOMElements.calendarYearSelector.value = currentYear;
+
+    // Populate Month Selector
+    const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+    DOMElements.calendarMonthSelector.innerHTML = '';
+    months.forEach((month, index) => {
+        DOMElements.calendarMonthSelector.innerHTML += `<option value="${index}">${month}</option>`;
+    });
+    DOMElements.calendarMonthSelector.value = currentMonth;
+
+    // --- التعديل الرئيسي يبدأ هنا ---
+    if (isGeneralSecretaryMode) {
+        // إذا كان المستخدم هو الأمين العام
+        DOMElements.calendarServiceFilterContainer.classList.remove('hidden-view'); // أظهر فلتر الخدمات
+
+        // قم بتعبئة الفلتر بأسماء الخدمات وخيار "الكل"
+        DOMElements.calendarServiceSelector.innerHTML = '<option value="">-- اختر خدمة --</option>';
+        DOMElements.calendarServiceSelector.innerHTML += '<option value="all">-- عرض الكل --</option>'; // إضافة خيار الكل
+        const serviceNames = services.filter(s => s.name !== 'الامين العام').map(s => s.name);
+        serviceNames.sort((a,b) => a.localeCompare(b,'ar')).forEach(name => {
+            DOMElements.calendarServiceSelector.innerHTML += `<option value="${name}">${name}</option>`;
+        });
+        // اعرض رسالة أولية في التقويم
+        DOMElements.calendarContent.innerHTML = '<p class="text-center text-gray-500">الرجاء اختيار خدمة لعرض تقويمها.</p>';
+
+    } else {
+        // إذا كان المستخدم أمين خدمة عادي
+        DOMElements.calendarServiceFilterContainer.classList.add('hidden-view'); // أبقِ الفلتر مخفياً
+        renderCalendar(currentYear, currentMonth); // اعرض تقويم خدمته مباشرة
+        listenForCalendarEvents(currentServiceName); // ابدأ الاستماع لأحداث خدمته
+    }
+}
         function renderCalendar(year, month) {
             const calendarContainer = DOMElements.calendarContent;
             calendarContainer.innerHTML = ''; // Clear previous calendar
@@ -1696,15 +1748,36 @@ let calendarEventsCache = {};
                 if (isFriday) cellClasses += ' bg-cyan-50 dark:bg-cyan-900/40';
                 if (isToday) cellClasses += ' border-2 border-red-500';
 
-                let eventHTML = '';
-                if(event) {
-                    const color = eventTypeColors[event.eventType] || 'bg-gray-500';
-                    eventHTML = `
-                        <div class="absolute bottom-1 right-1 left-1 p-1 rounded-md text-white text-xs truncate ${color}" title="${event.eventType}: ${event.eventDetails}">
-                            <i class="fas fa-calendar-check ml-1"></i> ${event.eventType}
-                        </div>
-                    `;
-                }
+                // الكود الجديد
+let eventHTML = '';
+const isAggregatedView = isGeneralSecretaryMode && DOMElements.calendarServiceSelector.value === 'all';
+
+if (isAggregatedView) {
+    // --- منطق جديد لعرض "الكل" كنقاط ملونة ---
+    const dayEvents = Object.values(calendarEventsCache).filter(cachedEvent => cachedEvent.date === dateString);
+    if (dayEvents.length > 0) {
+        eventHTML = `<div class="absolute bottom-1 right-1 left-1 flex justify-center items-center flex-wrap gap-1 p-0.5">`;
+        dayEvents.slice(0, 4).forEach(event => { // عرض 4 نقاط كحد أقصى
+            const color = eventTypeColors[event.eventType] || 'bg-gray-500';
+            eventHTML += `<span class="block w-3 h-3 rounded-full ${color} border border-white/50" title="${event.serviceName}: ${event.eventType}"></span>`;
+        });
+        if (dayEvents.length > 4) {
+            eventHTML += `<span class="text-xs font-bold text-gray-700 dark:text-gray-300">+${dayEvents.length - 4}</span>`;
+        }
+        eventHTML += `</div>`;
+    }
+} else {
+    // --- المنطق الأصلي لعرض خدمة واحدة ---
+    const event = calendarEventsCache[dateString];
+    if (event) {
+        const color = eventTypeColors[event.eventType] || 'bg-gray-500';
+        eventHTML = `
+            <div class="absolute bottom-1 right-1 left-1 p-1 rounded-md text-white text-xs truncate ${color}" title="${event.eventType}: ${event.eventDetails}">
+                <i class="fas fa-calendar-check ml-1"></i> ${event.eventType}
+            </div>
+        `;
+    }
+}
 
                 tbody += `
                     <td class="${cellClasses}" data-date="${dateString}">
@@ -1771,8 +1844,12 @@ let calendarEventsCache = {};
                 renderCalendar(year, month);
             } else {
                 try {
-                    const eventDocRef = doc(db, 'services', currentServiceName, 'calendarEvents', dateString);
-                    await setDoc(eventDocRef, eventData);
+const targetService = isGeneralSecretaryMode ? DOMElements.calendarServiceSelector.value : currentServiceName;
+if (!targetService || targetService === 'all') {
+    closeModal(DOMElements.calendarEventModal);
+    return showMessage("لحفظ أو تعديل حدث، الرجاء اختيار خدمة محددة من القائمة.", true);
+}
+const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateString);                    await setDoc(eventDocRef, eventData);
                 } catch (error) {
                     console.error("Error saving event:", error);
                     showMessage("فشل حفظ الحدث.", true);
@@ -1798,7 +1875,12 @@ let calendarEventsCache = {};
                     renderCalendar(year, month);
                 } else {
                     try {
-                        const eventDocRef = doc(db, 'services', currentServiceName, 'calendarEvents', dateString);
+                        const targetService = isGeneralSecretaryMode ? DOMElements.calendarServiceSelector.value : currentServiceName;
+if (!targetService || targetService === 'all') {
+     closeModal(DOMElements.calendarEventModal);
+     return showMessage("لحذف حدث، الرجاء اختيار خدمة محددة من القائمة.", true);
+}
+const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateString);
                         await deleteDoc(eventDocRef);
                     } catch (error) {
                         console.error("Error deleting event:", error);
@@ -3725,14 +3807,27 @@ let calendarEventsCache = {};
                 const month = parseInt(DOMElements.calendarMonthSelector.value);
                 if(!isNaN(year) && !isNaN(month)) renderCalendar(year, month);
             });
-            DOMElements.calendarContent.addEventListener('click', (e) => {
-                const dayCell = e.target.closest('td[data-date]');
-                if (dayCell) {
-                    openEventModal(dayCell.dataset.date);
-                }
-            });
+            // الكود الجديد
+DOMElements.calendarContent.addEventListener('click', (e) => {
+    const dayCell = e.target.closest('td[data-date]');
+    if (dayCell) {
+        // منع فتح نافذة التعديل في وضع "عرض الكل"
+        if (isGeneralSecretaryMode && DOMElements.calendarServiceSelector.value === 'all') {
+            showMessage("لعرض تفاصيل حدث أو تعديله، الرجاء اختيار خدمة محددة من القائمة.", false);
+            return; // إيقاف التنفيذ
+        }
+        openEventModal(dayCell.dataset.date);
+    }
+});
             DOMElements.calendarEventForm.addEventListener('submit', handleEventFormSubmit);
             DOMElements.deleteEventBtn.addEventListener('click', deleteCalendarEvent);
+             // Admin-specific listener for calendar service selection
+            if (DOMElements.calendarServiceSelector) {
+                DOMElements.calendarServiceSelector.addEventListener('change', () => {
+                    const selectedService = DOMElements.calendarServiceSelector.value;
+                    listenForCalendarEvents(selectedService || null);
+                });
+            }
 
 
             // Reports Page Listeners
@@ -3772,7 +3867,7 @@ let calendarEventsCache = {};
             DOMElements.hamburgerBtn.addEventListener('click', () => {
                 DOMElements.sidebar.classList.remove('translate-x-full');
                 DOMElements.sidebarOverlay.classList.remove('hidden');
-            });
+            });68
             DOMElements.sidebarOverlay.addEventListener('click', () => {
                 DOMElements.sidebar.classList.add('translate-x-full');
                 DOMElements.sidebarOverlay.classList.add('hidden');
@@ -3826,6 +3921,8 @@ let calendarEventsCache = {};
                 eventDetailsInput: document.getElementById('eventDetailsInput'),
                 saveEventBtn: document.getElementById('saveEventBtn'),
                 deleteEventBtn: document.getElementById('deleteEventBtn'),
+                calendarServiceSelector: document.getElementById('calendarServiceSelector'),
+                calendarServiceFilterContainer: document.getElementById('calendarServiceFilterContainer'),
                 searchInput: document.getElementById('searchInput'),
                 reportContent: document.getElementById('reportContent'),
                 reportOutput: document.getElementById('reportOutput'),
