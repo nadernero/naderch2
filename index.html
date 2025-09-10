@@ -19,6 +19,7 @@
     <!-- jsPDF and html2canvas for exporting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js" type="module"></script>
     
     <style>
         :root {
@@ -260,6 +261,12 @@
                         </label>
                         <i class="fas fa-sun text-yellow-500"></i>
                     </div>
+                    <div id="notification-permission-section" class="p-4 border-t dark:border-gray-700 hidden-view">
+                    <p class="text-xs text-center text-gray-500 mb-2">تفعيل إشعارات الإعلانات الجديدة</p>
+                    <button id="enableNotificationsBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center">
+                        <i class="fas fa-bell mr-2"></i> تفعيل الإشعارات
+                    </button>
+                </div>
                     <button id="backToServices" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center">
                         <i class="fas fa-arrow-right-from-bracket mr-2"></i> العودة للخدمات
                     </button>
@@ -781,8 +788,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc, getDoc, getDocs, updateDoc, query, where, writeBatch, orderBy, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc, getDoc, getDocs, updateDoc, query, where, writeBatch, orderBy, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
         // --- THEME MANAGEMENT (RUNS IMMEDIATELY) ---
         const themeCheckbox = document.getElementById('theme-checkbox');
         function applyTheme(theme) {
@@ -923,6 +930,52 @@ let calendarEventsCache = {};
             newConfirmBtn.addEventListener('click', confirmHandler, { once: true });
             cancelBtn.addEventListener('click', cancelHandler, { once: true });
         };
+        // --- NOTIFICATION FUNCTIONS ---
+async function requestNotificationPermission() {
+    console.log('Requesting notification permission...');
+    try {
+        const messaging = getMessaging();
+        // ! مهم: استبدل النص التالي بالمفتاح الذي نسخته من Firebase Console
+        const VAPID_KEY = 'BEfYUAnTgelOi0BXcRgo1HlNaJDSaJrTgdgI1hGrcd6ZVwoG5sYDzC9jSFKM2_9hUik_jRyvD6wHm9tlR-i7CSo';
+
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            console.log('Notification permission granted.');
+            showMessage('تم تفعيل الإشعارات بنجاح!');
+            document.getElementById('notification-permission-section').classList.add('hidden-view');
+
+            const fcmToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+            if (fcmToken) {
+                console.log('FCM Token:', fcmToken);
+                // نحفظ التوكن الخاص بالمستخدم الحالي
+                await saveTokenToFirestore(fcmToken);
+            } else {
+                console.warn('No registration token available. Request permission to generate one.');
+            }
+        } else {
+            console.warn('Notification permission denied.');
+            showMessage('تم رفض إذن الإشعارات.', true);
+        }
+    } catch (error) {
+        console.error('An error occurred while requesting notification permission. ', error);
+        showMessage('حدث خطأ أثناء تفعيل الإشعارات.', true);
+    }
+}
+
+async function saveTokenToFirestore(token) {
+    if (!currentServiceName || isGeneralSecretaryMode) return; // لا نحفظ التوكن للأمين العام
+    try {
+        const tokensColRef = collection(db, 'fcmTokens');
+        const tokenDocRef = doc(tokensColRef, token); // نستخدم التوكن نفسه كـ ID لمنع التكرار
+        await setDoc(tokenDocRef, {
+            serviceName: currentServiceName,
+            createdAt: serverTimestamp()
+        });
+        console.log('Token saved to Firestore for service:', currentServiceName);
+    } catch (error) {
+        console.error('Error saving FCM token to Firestore:', error);
+    }
+}
         
         // --- CORE APP LOGIC ---
         async function initializeFirebase() {
@@ -995,7 +1048,14 @@ let calendarEventsCache = {};
             DOMElements.loginOrServicesView.classList.add('hidden-view');
             DOMElements.mainDashboard.classList.remove('hidden-view');
             document.getElementById('sidebarServiceName').textContent = currentServiceName;
-            
+            const notificationSection = document.getElementById('notification-permission-section');
+if (notificationSection) {
+    if (Notification.permission !== 'granted' && !isGeneralSecretaryMode) {
+        notificationSection.classList.remove('hidden-view');
+    } else {
+        notificationSection.classList.add('hidden-view');
+    }
+}
             DOMElements.sidebarLinks.querySelector('[data-page="servantsPage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.sidebarLinks.querySelector('[data-page="attendancePage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.announcementsBoardLink.classList.toggle('hidden-view', !isGeneralSecretaryMode);
@@ -1212,32 +1272,50 @@ if (pageId === 'calendarPage') { // تم التعديل هنا
             }
         }
         
-        async function loadAllServicesData() {
-            await authReady;
-            showLoading(true);
-            allServantsCache = [];
-            allAttendanceCache = [];
-            const servicesToFetch = services.filter(s => s.name !== 'الامين العام');
-            
-            for (const service of servicesToFetch) {
-                const serviceName = service.name;
-                const [serviceServants, serviceAttendance] = await Promise.all([
-                    fetchData('servants', serviceName),
-                    fetchData('attendance', serviceName)
-                ]);
+// --- الكود الجديد (السريع والمحسّن) ---
+async function loadAllServicesData() {
+    await authReady;
+    showLoading(true);
+    allServantsCache = [];
+    allAttendanceCache = [];
+    const servicesToFetch = services.filter(s => s.name !== 'الامين العام');
+
+    try {
+        // الخطوة 1: نُجهّز قائمة بكل طلبات البيانات التي نريدها (بدون تنفيذها بعد).
+        const allPromises = servicesToFetch.map(service => {
+            const serviceName = service.name;
+            // كل طلب سيقوم بجلب ملفي الخدام والحضور للخدمة.
+            return Promise.all([
+                fetchData('servants', serviceName),
+                fetchData('attendance', serviceName)
+            ]).then(([serviceServants, serviceAttendance]) => {
+                // عندما تعود البيانات، نجهزها بإضافة اسم الخدمة.
                 const attendanceArray = Object.entries(serviceAttendance).map(([date, data]) => ({ date, ...data, serviceName }));
                 serviceServants.forEach(s => s.serviceName = serviceName);
-                
-                allServantsCache.push(...serviceServants);
-                allAttendanceCache.push(...attendanceArray);
+                return { serviceServants, attendanceArray };
+            });
+        });
 
-                renderAdminServantsTable(allServantsCache.sort((a, b) => a.name.localeCompare(b.name, 'ar')));
-                updateAdminDashboard();
-            }
-            
-            showLoading(false);
-        }
+        // الخطوة 2: نرسل كل الطلبات دفعة واحدة وننتظر حتى تكتمل جميعها.
+        const allResults = await Promise.all(allPromises);
 
+        // الخطوة 3: الآن بعد أن وصلت كل البيانات، نجمعها في مكان واحد.
+        allResults.forEach(result => {
+            allServantsCache.push(...result.serviceServants);
+            allAttendanceCache.push(...result.attendanceArray);
+        });
+
+        // الخطوة 4: نحدّث الواجهة مرة واحدة فقط بعد اكتمال كل شيء.
+        renderAdminServantsTable(allServantsCache.sort((a, b) => a.name.localeCompare(b.name, 'ar')));
+        updateAdminDashboard();
+
+    } catch (error) {
+        console.error("Error loading all services data in parallel:", error);
+        showMessage("حدث خطأ أثناء تحميل البيانات الشاملة.", true);
+    } finally {
+        showLoading(false);
+    }
+}
 
         // --- SERVANTS FUNCTIONS ---
         function renderServantsTable(servantsToRender) {
@@ -3015,6 +3093,15 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     input.value = '';
                     targetContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
                     showMessage('تم إضافة الإعلان بنجاح.');
+                    // === أضف الكود الجديد هنا ===
+// إضافة طلب إرسال إشعار إلى قائمة الانتظار
+await addDoc(collection(db, 'notificationQueue'), {
+    targetServices: targetServices,
+    title: 'إعلان جديد من الأمين العام',
+    body: text,
+    createdAt: serverTimestamp()
+});
+// === نهاية الكود المضاف ===
                 } catch (error) {
                     console.error("Error adding announcement: ", error);
                     showMessage('فشل إضافة الإعلان.', true);
@@ -3862,7 +3949,12 @@ DOMElements.calendarContent.addEventListener('click', (e) => {
             
             // Theme Toggle Listener
             DOMElements.themeCheckbox.addEventListener('change', toggleTheme);
-
+// === أضف الكود الجديد هنا ===
+// Notification Permission Listener
+if (DOMElements.enableNotificationsBtn) {
+    DOMElements.enableNotificationsBtn.addEventListener('click', requestNotificationPermission);
+}
+// === نهاية الكود المضاف ===
             // Mobile Sidebar Listeners
             DOMElements.hamburgerBtn.addEventListener('click', () => {
                 DOMElements.sidebar.classList.remove('translate-x-full');
@@ -3995,10 +4087,23 @@ DOMElements.calendarContent.addEventListener('click', (e) => {
                 loadMoreAnnouncementsContainer: document.getElementById('loadMoreAnnouncementsContainer'),
                 loadMoreAnnouncementsBtn: document.getElementById('loadMoreAnnouncementsBtn'),
                  serviceAnnouncementsBadge: document.getElementById('serviceAnnouncementsBadge'),
+                 // === أضف الكود الجديد هنا ===
+enableNotificationsBtn: document.getElementById('enableNotificationsBtn'),
 
             };
 
             initializeFirebase();
+            // === أضف الكود الجديد هنا ===
+// Register Firebase Messaging Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./firebase-messaging-sw.js')
+        .then(registration => {
+            console.log('Service Worker registered successfully with scope:', registration.scope);
+        }).catch(err => {
+            console.error('Service Worker registration failed:', err);
+        });
+}
+// === نهاية الكود المضاف ===
             populateServices();
             updateServiceCardBadges();
             listenForUnreadNotesForBadge(); // Start listening for admin notes immediately
