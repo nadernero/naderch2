@@ -19,7 +19,6 @@
     <!-- jsPDF and html2canvas for exporting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js" type="module"></script>
     
     <style>
         :root {
@@ -261,12 +260,6 @@
                         </label>
                         <i class="fas fa-sun text-yellow-500"></i>
                     </div>
-                    <div id="notification-permission-section" class="p-4 border-t dark:border-gray-700 hidden-view">
-                    <p class="text-xs text-center text-gray-500 mb-2">تفعيل إشعارات الإعلانات الجديدة</p>
-                    <button id="enableNotificationsBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center">
-                        <i class="fas fa-bell mr-2"></i> تفعيل الإشعارات
-                    </button>
-                </div>
                     <button id="backToServices" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center">
                         <i class="fas fa-arrow-right-from-bracket mr-2"></i> العودة للخدمات
                     </button>
@@ -748,6 +741,21 @@
     </div>
     <div id="messageBox" class="hidden fixed top-5 right-5 text-white py-3 px-6 rounded-lg shadow-xl z-50"></div>
     <!-- [NEW] Calendar Event Modal -->
+<!-- === أضف الكود الجديد هنا === -->
+<!-- [NEW] Aggregated Calendar Events Summary Modal -->
+<div id="aggregatedEventsModal" class="fixed inset-0 z-50 items-center justify-center hidden-view modal-backdrop">
+    <div class="bg-white dark:bg-gray-800 w-11/12 md:max-w-2xl mx-auto rounded-xl shadow-lg z-50 p-8 max-h-[90vh] flex flex-col">
+         <div class="flex justify-between items-center pb-3 border-b mb-4 dark:border-gray-600">
+            <h3 id="aggregatedEventsModalTitle" class="h2 text-cyan-600"></h3>
+            <button class="close-modal-btn cursor-pointer z-50 text-2xl" aria-label="إغلاق النافذة">&times;</button>
+        </div>
+        <div id="aggregatedEventsModalBody" class="overflow-y-auto space-y-3">
+            <!-- Event summary will be injected here -->
+        </div>
+    </div>
+</div>
+<!-- === نهاية الكود المضاف === -->
+
     <div id="calendarEventModal" class="fixed inset-0 z-50 items-center justify-center hidden-view modal-backdrop">
         <div class="bg-white dark:bg-gray-800 w-11/12 md:max-w-md mx-auto rounded-xl shadow-lg z-50 p-8">
             <div class="flex justify-between items-center pb-3 border-b dark:border-gray-600">
@@ -788,8 +796,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc, getDoc, getDocs, updateDoc, query, where, writeBatch, orderBy, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc, getDoc, getDocs, updateDoc, query, where, writeBatch, orderBy, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
         // --- THEME MANAGEMENT (RUNS IMMEDIATELY) ---
         const themeCheckbox = document.getElementById('theme-checkbox');
         function applyTheme(theme) {
@@ -930,52 +938,6 @@ let calendarEventsCache = {};
             newConfirmBtn.addEventListener('click', confirmHandler, { once: true });
             cancelBtn.addEventListener('click', cancelHandler, { once: true });
         };
-        // --- NOTIFICATION FUNCTIONS ---
-async function requestNotificationPermission() {
-    console.log('Requesting notification permission...');
-    try {
-        const messaging = getMessaging();
-        // ! مهم: استبدل النص التالي بالمفتاح الذي نسخته من Firebase Console
-        const VAPID_KEY = 'BEfYUAnTgelOi0BXcRgo1HlNaJDSaJrTgdgI1hGrcd6ZVwoG5sYDzC9jSFKM2_9hUik_jRyvD6wHm9tlR-i7CSo';
-
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            console.log('Notification permission granted.');
-            showMessage('تم تفعيل الإشعارات بنجاح!');
-            document.getElementById('notification-permission-section').classList.add('hidden-view');
-
-            const fcmToken = await getToken(messaging, { vapidKey: VAPID_KEY });
-            if (fcmToken) {
-                console.log('FCM Token:', fcmToken);
-                // نحفظ التوكن الخاص بالمستخدم الحالي
-                await saveTokenToFirestore(fcmToken);
-            } else {
-                console.warn('No registration token available. Request permission to generate one.');
-            }
-        } else {
-            console.warn('Notification permission denied.');
-            showMessage('تم رفض إذن الإشعارات.', true);
-        }
-    } catch (error) {
-        console.error('An error occurred while requesting notification permission. ', error);
-        showMessage('حدث خطأ أثناء تفعيل الإشعارات.', true);
-    }
-}
-
-async function saveTokenToFirestore(token) {
-    if (!currentServiceName || isGeneralSecretaryMode) return; // لا نحفظ التوكن للأمين العام
-    try {
-        const tokensColRef = collection(db, 'fcmTokens');
-        const tokenDocRef = doc(tokensColRef, token); // نستخدم التوكن نفسه كـ ID لمنع التكرار
-        await setDoc(tokenDocRef, {
-            serviceName: currentServiceName,
-            createdAt: serverTimestamp()
-        });
-        console.log('Token saved to Firestore for service:', currentServiceName);
-    } catch (error) {
-        console.error('Error saving FCM token to Firestore:', error);
-    }
-}
         
         // --- CORE APP LOGIC ---
         async function initializeFirebase() {
@@ -1048,14 +1010,7 @@ async function saveTokenToFirestore(token) {
             DOMElements.loginOrServicesView.classList.add('hidden-view');
             DOMElements.mainDashboard.classList.remove('hidden-view');
             document.getElementById('sidebarServiceName').textContent = currentServiceName;
-            const notificationSection = document.getElementById('notification-permission-section');
-if (notificationSection) {
-    if (Notification.permission !== 'granted' && !isGeneralSecretaryMode) {
-        notificationSection.classList.remove('hidden-view');
-    } else {
-        notificationSection.classList.add('hidden-view');
-    }
-}
+            
             DOMElements.sidebarLinks.querySelector('[data-page="servantsPage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.sidebarLinks.querySelector('[data-page="attendancePage"]').classList.toggle('hidden-view', isGeneralSecretaryMode);
             DOMElements.announcementsBoardLink.classList.toggle('hidden-view', !isGeneralSecretaryMode);
@@ -1721,9 +1676,13 @@ calendarEventsCache[doc.id + '_' + serviceName] = eventData; // Use unique key
         const eventsCol = collection(db, 'services', serviceNameToListen, 'calendarEvents');
         calendarEventsUnsubscribe = onSnapshot(eventsCol, (snapshot) => {
             calendarEventsCache = {};
-            snapshot.docs.forEach(doc => {
-                calendarEventsCache[doc.id] = doc.data();
-            });
+        
+        snapshot.docs.forEach(doc => {
+        const eventData = doc.data();
+        eventData.date = doc.id; // إضافة تاريخ الحدث
+        eventData.serviceName = serviceNameToListen; // إضافة اسم الخدمة
+        calendarEventsCache[doc.id] = eventData;
+        });
             const year = parseInt(DOMElements.calendarYearSelector.value);
             const month = parseInt(DOMElements.calendarMonthSelector.value);
             if (!isNaN(year) && !isNaN(month)) {
@@ -1897,6 +1856,40 @@ if (isAggregatedView) {
             
             openModal(DOMElements.calendarEventModal);
         }
+        // === أضف الكود الجديد هنا ===
+function showAggregatedEventsModal(dateString) {
+    const dayEvents = Object.values(calendarEventsCache).filter(cachedEvent => cachedEvent.date === dateString);
+
+    if (dayEvents.length === 0) return;
+
+    const [y, m, d] = dateString.split('-');
+    const displayDate = new Date(y, m - 1, d);
+    const formattedDate = displayDate.toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    DOMElements.aggregatedEventsModalTitle.textContent = `ملخص أحداث: ${formattedDate}`;
+
+    let eventsHTML = '';
+    dayEvents.forEach(event => {
+        const colorClass = eventTypeColors[event.eventType] || 'bg-gray-500';
+        const colorValue = getComputedStyle(document.documentElement).getPropertyValue(event.color) || '#9ca3af';
+
+        eventsHTML += `
+            <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 border-r-4" style="border-color: ${colorValue}">
+                <div class="flex justify-between items-center">
+                    <h4 class="font-bold text-lg flex items-center">
+                        <span class="block w-4 h-4 rounded-full ${colorClass} ml-3"></span>
+                        ${event.eventType}
+                    </h4>
+                    <span class="text-sm font-semibold text-cyan-600 dark:text-cyan-400">${event.serviceName}</span>
+                </div>
+                ${event.eventDetails ? `<p class="mt-2 text-sm text-gray-600 dark:text-gray-400 pr-7">${event.eventDetails}</p>` : ''}
+            </div>
+        `;
+    });
+
+    DOMElements.aggregatedEventsModalBody.innerHTML = eventsHTML;
+    openModal(DOMElements.aggregatedEventsModal);
+}
 
         async function handleEventFormSubmit(e) {
             e.preventDefault();
@@ -3093,15 +3086,6 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     input.value = '';
                     targetContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
                     showMessage('تم إضافة الإعلان بنجاح.');
-                    // === أضف الكود الجديد هنا ===
-// إضافة طلب إرسال إشعار إلى قائمة الانتظار
-await addDoc(collection(db, 'notificationQueue'), {
-    targetServices: targetServices,
-    title: 'إعلان جديد من الأمين العام',
-    body: text,
-    createdAt: serverTimestamp()
-});
-// === نهاية الكود المضاف ===
                 } catch (error) {
                     console.error("Error adding announcement: ", error);
                     showMessage('فشل إضافة الإعلان.', true);
@@ -3895,17 +3879,18 @@ await addDoc(collection(db, 'notificationQueue'), {
                 if(!isNaN(year) && !isNaN(month)) renderCalendar(year, month);
             });
             // الكود الجديد
-DOMElements.calendarContent.addEventListener('click', (e) => {
-    const dayCell = e.target.closest('td[data-date]');
-    if (dayCell) {
-        // منع فتح نافذة التعديل في وضع "عرض الكل"
-        if (isGeneralSecretaryMode && DOMElements.calendarServiceSelector.value === 'all') {
-            showMessage("لعرض تفاصيل حدث أو تعديله، الرجاء اختيار خدمة محددة من القائمة.", false);
-            return; // إيقاف التنفيذ
-        }
-        openEventModal(dayCell.dataset.date);
-    }
-});
+            DOMElements.calendarContent.addEventListener('click', (e) => {
+            const dayCell = e.target.closest('td[data-date]');
+            if (dayCell) {
+             if (isGeneralSecretaryMode) {
+            // إذا كان المستخدم هو الأمين العام، قم دائمًا بعرض نافذة الملخص
+            showAggregatedEventsModal(dayCell.dataset.date);
+             } else {
+            // إذا كان المستخدم أمين خدمة عادي، قم بعرض نافذة التعديل
+            openEventModal(dayCell.dataset.date);
+             }
+             }
+                });
             DOMElements.calendarEventForm.addEventListener('submit', handleEventFormSubmit);
             DOMElements.deleteEventBtn.addEventListener('click', deleteCalendarEvent);
              // Admin-specific listener for calendar service selection
@@ -3949,12 +3934,7 @@ DOMElements.calendarContent.addEventListener('click', (e) => {
             
             // Theme Toggle Listener
             DOMElements.themeCheckbox.addEventListener('change', toggleTheme);
-// === أضف الكود الجديد هنا ===
-// Notification Permission Listener
-if (DOMElements.enableNotificationsBtn) {
-    DOMElements.enableNotificationsBtn.addEventListener('click', requestNotificationPermission);
-}
-// === نهاية الكود المضاف ===
+
             // Mobile Sidebar Listeners
             DOMElements.hamburgerBtn.addEventListener('click', () => {
                 DOMElements.sidebar.classList.remove('translate-x-full');
@@ -4068,6 +4048,9 @@ if (DOMElements.enableNotificationsBtn) {
                 activityAttendeesModal: document.getElementById('activityAttendeesModal'),
                 activityAttendeesModalTitle: document.getElementById('activityAttendeesModalTitle'),
                 activityAttendeesModalBody: document.getElementById('activityAttendeesModalBody'),
+                aggregatedEventsModal: document.getElementById('aggregatedEventsModal'),
+                aggregatedEventsModalTitle: document.getElementById('aggregatedEventsModalTitle'),
+                aggregatedEventsModalBody: document.getElementById('aggregatedEventsModalBody'),
                 noteToAdminInput: document.getElementById('noteToAdminInput'),
                 sendNoteToAdminBtn: document.getElementById('sendNoteToAdminBtn'),
                 sentNotesHistory: document.getElementById('sentNotesHistory'),
@@ -4087,23 +4070,10 @@ if (DOMElements.enableNotificationsBtn) {
                 loadMoreAnnouncementsContainer: document.getElementById('loadMoreAnnouncementsContainer'),
                 loadMoreAnnouncementsBtn: document.getElementById('loadMoreAnnouncementsBtn'),
                  serviceAnnouncementsBadge: document.getElementById('serviceAnnouncementsBadge'),
-                 // === أضف الكود الجديد هنا ===
-enableNotificationsBtn: document.getElementById('enableNotificationsBtn'),
 
             };
 
             initializeFirebase();
-            // === أضف الكود الجديد هنا ===
-// Register Firebase Messaging Service Worker
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./firebase-messaging-sw.js')
-        .then(registration => {
-            console.log('Service Worker registered successfully with scope:', registration.scope);
-        }).catch(err => {
-            console.error('Service Worker registration failed:', err);
-        });
-}
-// === نهاية الكود المضاف ===
             populateServices();
             updateServiceCardBadges();
             listenForUnreadNotesForBadge(); // Start listening for admin notes immediately
