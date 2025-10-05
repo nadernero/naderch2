@@ -312,6 +312,15 @@
                                         <!-- Activity status will be populated here -->
                                     </div>
                                 </div>
+                                <!-- [NEW] Consecutive Absences Card -->
+                                <div class="lg:col-span-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                                    <h3 class="font-bold text-orange-600 dark:text-orange-400 mb-2 text-lg flex items-center">
+                                        <i class="fas fa-user-clock mr-2"></i> خدام بحاجة للمتابعة (غياب 3+ مرات متتالية)
+                                    </h3>
+                                    <div id="consecutiveAbsenceStat" class="overflow-y-auto space-y-2" style="max-height: 200px;">
+                                        <!-- Content will be populated by JS -->
+                                    </div>
+                                </div>
                             </div>
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
@@ -586,7 +595,7 @@
                                 <div id="reportTabs" class="flex border-b border-gray-200 dark:border-gray-700 mb-4">
                                     <button data-report-type="individual" class="report-tab active flex-1 text-center py-2 px-4 border-b-2 font-medium text-lg transition-colors duration-300">تقرير فردي</button>
                                     <button data-report-type="comprehensive" class="report-tab flex-1 text-center py-2 px-4 border-b-2 font-medium text-lg transition-colors duration-300">تقرير شامل</button>
-                                    <button data-report-type="averages" class="report-tab flex-1 text-center py-2 px-4 border-b-2 font-medium text-lg transition-colors duration-300">تقرير المتوسطات</button>
+                                    <button data-report-type="activity" class="report-tab flex-1 text-center py-2 px-4 border-b-2 font-medium text-lg transition-colors duration-300">تقرير نشاط</button>
                                     <button data-report-type="comparison" id="comparisonReportTab" class="report-tab flex-1 text-center py-2 px-4 border-b-2 font-medium text-lg transition-colors duration-300 hidden-view">مقارنة الخدمات</button>
                                 </div>
 
@@ -597,6 +606,10 @@
                                             <div id="serviceFilterContainer" class="hidden-view">
                                                 <label for="reportServiceSelector" class="block mb-2 font-bold text-sm">اختر الخدمة:</label>
                                                 <select id="reportServiceSelector" class="w-full p-3 h-14 text-lg border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"></select>
+                                            </div>
+                                            <div id="activitySelectorContainer" class="hidden-view md:col-span-2">
+                                                <label for="reportActivitySelector" class="block mb-2 font-bold text-sm">اختر النشاط:</label>
+                                                <select id="reportActivitySelector" class="w-full p-3 h-14 text-lg border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"></select>
                                             </div>
                                             <div id="servantSelectorContainer" class="md:col-span-2">
                                                 <label for="reportServantSelector" class="block mb-2 font-bold text-sm">اختر خادم:</label>
@@ -844,7 +857,9 @@
             { key: 'preparation', name: 'التحضير', icon: 'fa-book-open', color: 'rgba(234, 179, 8, 0.7)', borderColor: 'rgba(234, 179, 8, 1)' },
             { key: 'mass', name: 'القداس', icon: 'fa-cross', color: 'rgba(239, 68, 68, 0.7)', borderColor: 'rgba(239, 68, 68, 1)' },
             { key: 'service', name: 'الخدمة', icon: 'fa-church', color: 'rgba(59, 130, 246, 0.7)', borderColor: 'rgba(59, 130, 246, 1)' },
-            { key: 'explanation', name: 'الشرح', icon: 'fa-chalkboard-teacher', color: 'rgba(34, 197, 94, 0.7)', borderColor: 'rgba(34, 197, 94, 1)' }
+            { key: 'explanation', name: 'الشرح', icon: 'fa-chalkboard-teacher', color: 'rgba(34, 197, 94, 0.7)', borderColor: 'rgba(34, 197, 94, 1)' },
+            { key: 'apology', name: 'معتذر', icon: 'fa-hand-paper', color: 'rgba(107, 114, 128, 0.7)', borderColor: 'rgba(107, 114, 128, 1)' }
+        
         ];
         
         const CORRECT_CODE = '123456';
@@ -888,7 +903,7 @@
 let calendarEventsCache = {};
         // Chart instances
         let reportChart1 = null, reportChart2 = null, homeChart = null;
-        let adminChart = null, comparisonChart = null, profileChart = null, activityComparisonChart = null;
+        let adminChart = null, comparisonChart = null, profileChart = null, activityReportChart = null;
         
         let authReadyPromiseResolver;
         const authReady = new Promise(resolve => {
@@ -944,13 +959,14 @@ let calendarEventsCache = {};
             try {
                 // --- Firebase Configuration ---
                 const firebaseConfig = {
-                  apiKey: "AIzaSyDqnWPGTAvIWakd0Wl14uuznrCy2oo8Iws",
-                  authDomain: "church-service-app-4f180.firebaseapp.com",
-                  projectId: "church-service-app-4f180",
-                  storageBucket: "church-service-app-4f180.appspot.com",
-                  messagingSenderId: "431475695196",
-                  appId: "1:431475695196:web:4bd4389448eb94804e1099"
-                };
+  apiKey: "AIzaSyBIQGeqjgImfHCpkQlLWHHPSE00g8dzrdo",
+  authDomain: "stgeorge-church-app-fc444.firebaseapp.com",
+  projectId: "stgeorge-church-app-fc444",
+  storageBucket: "stgeorge-church-app-fc444.firebasestorage.app",
+  messagingSenderId: "569476417547",
+  appId: "1:569476417547:web:770546604086b1a534df0e",
+  measurementId: "G-S27LBQ56Q2"
+};
                 // -----------------------------
 
                 isLocalMode = false;
@@ -1337,13 +1353,19 @@ async function loadAllServicesData() {
             };
             
             showLoading(true);
-            if (servantId) {
-                await updateServant(servantId, servantData);
-            } else {
-                await addServant(servantData);
+            try {
+                if (servantId) {
+                    await updateServant(servantId, servantData);
+                } else {
+                    await addServant(servantData);
+                }
+            } catch (error) {
+                // Errors are handled in the called functions, but this prevents crashes.
+                console.error("Error during servant form submission:", error);
+            } finally {
+                showLoading(false);
+                closeModal(DOMElements.manualEntryModal);
             }
-            showLoading(false);
-            closeModal(DOMElements.manualEntryModal);
         }
 
         async function addServant(servantData) {
@@ -1554,14 +1576,23 @@ async function loadAllServicesData() {
             const displayDate = new Date(year, month - 1, day);
             const formattedDate = displayDate.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+// ... داخل الدالة showActivityChecklist
             DOMElements.attendanceListTitle.textContent = `تسجيل حضور: ${activity.name} - ${formattedDate}`;
             DOMElements.servantsChecklist.innerHTML = '';
-            
-            DOMElements.noActivityCheck.checked = false;
-            DOMElements.noActivityReason.value = '';
-            DOMElements.noActivityReason.classList.add('hidden');
-            DOMElements.noActivityLabel.textContent = `لا يوجد ${activity.name} لهذا اليوم`;
-            DOMElements.servantsChecklist.classList.remove('hidden');
+
+            // الشيفرة المحدثة لإدارة عرض قسم "لا يوجد نشاط"
+            const noActivitySection = document.getElementById('noActivitySection');
+            if (activityKey === 'apology') {
+                noActivitySection.classList.add('hidden-view');
+            } else {
+                noActivitySection.classList.remove('hidden-view');
+                DOMElements.noActivityCheck.checked = false;
+                DOMElements.noActivityReason.value = '';
+                DOMElements.noActivityReason.classList.add('hidden');
+                DOMElements.noActivityLabel.textContent = `لا يوجد ${activity.name} لهذا اليوم`;
+                DOMElements.servantsChecklist.classList.remove('hidden');
+            }
+            // نهاية الشيفرة المحدثة
 
             const dayData = attendanceYearCache[date] || {};
             const activityData = dayData[activityKey] || {};
@@ -1586,45 +1617,74 @@ async function loadAllServicesData() {
             await authReady;
             if (!selectedFriday || !currentActivity) return showMessage("الرجاء اختيار اليوم والنشاط أولاً.", true);
             
-            const [year, month, day] = selectedFriday.split('-').map(Number);
-            
-            const activityUpdate = { year: Number(year) };
-            if (DOMElements.noActivityCheck.checked) {
-                activityUpdate.attendees = [];
-                activityUpdate.note = DOMElements.noActivityReason.value || 'تم الإلغاء';
-            } else {
-                const attendees = Array.from(DOMElements.servantsChecklist.querySelectorAll('input[type="checkbox"]:checked'))
-                                       .map(checkbox => checkbox.dataset.servantId);
-                activityUpdate.attendees = attendees;
-                activityUpdate.note = null;
-            }
+            const saveBtn = DOMElements.saveActivityAttendanceBtn;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الحفظ...';
 
-            const dayData = attendanceYearCache[selectedFriday] || { year: Number(year) };
-            dayData[currentActivity] = activityUpdate;
-            
-            if (isLocalMode) {
-                attendanceYearCache[selectedFriday] = dayData;
-                saveLocalAttendance(attendanceYearCache, currentServiceName);
-            } else {
-                try {
-                    const dayDocRef = doc(db, 'services', currentServiceName, 'attendance', selectedFriday);
-                    await setDoc(dayDocRef, dayData); 
-                    attendanceYearCache[selectedFriday] = dayData;
-                } catch (error) {
-                    console.error("Error saving attendance:", error);
-                    showMessage("فشل حفظ الحضور.", true);
-                    return;
+            try {
+                const [year] = selectedFriday.split('-').map(Number);
+                
+                // 1. Prepare data for the specific activity being updated
+                const activityUpdate = {};
+                if (DOMElements.noActivityCheck.checked) {
+                    activityUpdate.attendees = [];
+                    activityUpdate.note = DOMElements.noActivityReason.value || 'تم الإلغاء';
+                } else {
+                    const attendees = Array.from(DOMElements.servantsChecklist.querySelectorAll('input[type="checkbox"]:checked'))
+                                           .map(checkbox => checkbox.dataset.servantId);
+                    activityUpdate.attendees = attendees;
+                    activityUpdate.note = null; // Use null to denote it's not cancelled
                 }
-            }
-            
-            showMessage(`تم حفظ الحضور بنجاح.`);
-            DOMElements.attendanceListContainer.classList.add('hidden-view');
-            await updateActivityButtonsStatus(selectedFriday);
-            
-            const currentYear = parseInt(DOMElements.yearSelector.value);
-            const currentMonth = parseInt(DOMElements.monthSelector.value);
-            if (!isNaN(currentYear) && !isNaN(currentMonth)) {
-                populateFridaysGrid(currentYear, currentMonth);
+
+                // 2. Save data to the backend or local storage
+                if (isLocalMode) {
+                    // In local mode, we just update the cache directly
+                    const dayData = attendanceYearCache[selectedFriday] || { year: Number(year) };
+                    dayData[currentActivity] = activityUpdate;
+                    attendanceYearCache[selectedFriday] = dayData;
+                    saveLocalAttendance(attendanceYearCache, currentServiceName);
+                } else {
+                    // For Firestore, prepare the update object and save
+                    const dayDocRef = doc(db, 'services', currentServiceName, 'attendance', selectedFriday);
+                    const updatesForFirestore = {
+                        year: Number(year),
+                        [currentActivity]: activityUpdate
+                    };
+                    // Use setDoc with merge to create or update the document without overwriting other activities
+                    await setDoc(dayDocRef, updatesForFirestore, { merge: true });
+
+                    // IMPORTANT: Update local cache only after successful save to keep UI in sync
+                    const dayData = attendanceYearCache[selectedFriday] || { year: Number(year) };
+                    dayData[currentActivity] = activityUpdate;
+                    attendanceYearCache[selectedFriday] = dayData;
+                }
+                
+                // 3. Provide user feedback and update the UI
+                showMessage('تم الحفظ بنجاح.');
+                DOMElements.attendanceListContainer.classList.add('hidden-view');
+                
+                // Update the detailed activity buttons first
+                await updateActivityButtonsStatus(selectedFriday);
+                
+                // Then, redraw the main Friday buttons grid to show the new status dots
+                const currentYear = parseInt(DOMElements.yearSelector.value);
+                const currentMonth = parseInt(DOMElements.monthSelector.value);
+                if (!isNaN(currentYear) && !isNaN(currentMonth)) {
+                    populateFridaysGrid(currentYear, currentMonth);
+                    // [FIX] Re-apply active class to the selected Friday button as populateFridaysGrid redraws it
+                    const activeFridayBtn = DOMElements.fridaysGrid.querySelector(`[data-date="${selectedFriday}"]`);
+                    if (activeFridayBtn) {
+                        activeFridayBtn.classList.add('active');
+                    }
+                }
+
+            } catch (error) {
+                console.error("Error saving attendance:", error);
+                showMessage("فشل حفظ الحضور. الرجاء المحاولة مرة أخرى.", true);
+            } finally {
+                // 4. Restore the save button to its original state
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save mr-2"></i> حفظ الحضور';
             }
         }
 
@@ -1906,30 +1966,30 @@ function showAggregatedEventsModal(dateString) {
             }
             
             showLoading(true);
-
-            if (isLocalMode) {
-                calendarEventsCache[dateString] = eventData;
-                setLocalData(`church-app-calendar-${currentServiceName}`, calendarEventsCache);
-                const year = parseInt(DOMElements.calendarYearSelector.value);
-                const month = parseInt(DOMElements.calendarMonthSelector.value);
-                renderCalendar(year, month);
-            } else {
-                try {
-const targetService = isGeneralSecretaryMode ? DOMElements.calendarServiceSelector.value : currentServiceName;
-if (!targetService || targetService === 'all') {
-    closeModal(DOMElements.calendarEventModal);
-    return showMessage("لحفظ أو تعديل حدث، الرجاء اختيار خدمة محددة من القائمة.", true);
-}
-const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateString);                    await setDoc(eventDocRef, eventData);
-                } catch (error) {
-                    console.error("Error saving event:", error);
-                    showMessage("فشل حفظ الحدث.", true);
+            try {
+                if (isLocalMode) {
+                    calendarEventsCache[dateString] = eventData;
+                    setLocalData(`church-app-calendar-${currentServiceName}`, calendarEventsCache);
+                    const year = parseInt(DOMElements.calendarYearSelector.value);
+                    const month = parseInt(DOMElements.calendarMonthSelector.value);
+                    renderCalendar(year, month);
+                } else {
+                    const targetService = isGeneralSecretaryMode ? DOMElements.calendarServiceSelector.value : currentServiceName;
+                    if (!targetService || targetService === 'all') {
+                        showMessage("لحفظ أو تعديل حدث، الرجاء اختيار خدمة محددة من القائمة.", true);
+                        return; // finally will still execute
+                    }
+                    const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateString);
+                    await setDoc(eventDocRef, eventData);
                 }
+                showMessage("تم حفظ الحدث بنجاح.");
+            } catch (error) {
+                console.error("Error saving event:", error);
+                showMessage("فشل حفظ الحدث.", true);
+            } finally {
+                showLoading(false);
+                closeModal(DOMElements.calendarEventModal);
             }
-            
-            showLoading(false);
-            closeModal(DOMElements.calendarEventModal);
-            showMessage("تم حفظ الحدث بنجاح.");
         }
 
         async function deleteCalendarEvent() {
@@ -1983,7 +2043,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             if (percentage >= 50) return 'bg-yellow-100 dark:bg-yellow-900';
             return 'bg-red-100 dark:bg-red-900';
         }
-
+        
         async function loadReportsPage() {
             await authReady;
             DOMElements.reportOutput.classList.add('hidden-view');
@@ -2000,6 +2060,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.comparisonReportContainer.classList.add('hidden-view');
 
             DOMElements.servantSelectorContainer.classList.remove('hidden-view');
+            DOMElements.activitySelectorContainer.classList.add('hidden-view');
             
             DOMElements.serviceFilterContainer.classList.toggle('hidden-view', !isGeneralSecretaryMode);
             DOMElements.comparisonReportTab.classList.toggle('hidden-view', !isGeneralSecretaryMode);
@@ -2013,6 +2074,14 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 allAttendanceCache = Object.entries(attendanceData).map(([date, data]) => ({ date, ...data }));
             }
             populateReportServantSelector();
+            
+            // Populate activity selector
+            DOMElements.reportActivitySelector.innerHTML = '<option value="">-- اختر نشاط --</option>';
+            activities.forEach(act => {
+                if (act.key !== 'apology') { // Don't report on apologies
+                    DOMElements.reportActivitySelector.innerHTML += `<option value="${act.key}">${act.name}</option>`;
+                }
+            });
         }
         
         function populateServiceFilter() {
@@ -2061,8 +2130,8 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 else displayIndividualReport(servantId, filteredAttendance, sourceServants);
             } else if (currentReportType === 'comprehensive') {
                 generateComprehensiveReport(filteredAttendance, sourceServants);
-            } else if (currentReportType === 'averages') {
-                generateAveragesReport(filteredAttendance, sourceServants);
+            } else if (currentReportType === 'activity') {
+                generateActivityReport(filteredAttendance, sourceServants);
             }
         }
         
@@ -2174,104 +2243,89 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.reportOutput.classList.remove('hidden-view');
         };
         
-        function generateAveragesReport(data, servants) { 
-            DOMElements.reportContent.innerHTML = `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg shadow">
-                        <h4 class="font-bold mb-2 text-center">متوسط نسبة الحضور لكل نشاط</h4>
-                        <div class="relative h-80"><canvas id="reportAverageChartBar"></canvas></div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-6">
-                        <div id="topActivityCard" class="text-center p-4 rounded-lg bg-green-100 dark:bg-green-900"></div>
-                        <div id="bottomActivityCard" class="text-center p-4 rounded-lg bg-red-100 dark:bg-red-900"></div>
-                        <div class="col-span-2 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg shadow">
-                             <h4 class="font-bold mb-2 text-center">توزيع الحضور</h4>
-                            <div class="relative h-48"><canvas id="reportAverageChartDoughnut"></canvas></div>
+        function generateActivityReport(data, servants) {
+            const selectedActivityKey = DOMElements.reportActivitySelector.value;
+            if (!selectedActivityKey) {
+                return showMessage("الرجاء اختيار نشاط لعرض التقرير.", true);
+            }
+            const selectedActivity = activityMap.get(selectedActivityKey);
+            
+            let servantResults = servants.map(servant => {
+                let attended = 0, meetings = 0;
+                data.forEach(day => {
+                    if (day[selectedActivityKey] && (day[selectedActivityKey].note === null || day[selectedActivityKey].note === undefined)) {
+                        meetings++;
+                        if (day[selectedActivityKey].attendees.includes(servant.id)) attended++;
+                    }
+                });
+                const percentage = meetings > 0 ? Math.round((attended / meetings) * 100) : 0;
+                return { name: servant.name, percentage, attended, meetings };
+            }).sort((a,b) => b.percentage - a.percentage);
+
+            let reportHTML = `
+                <h3 class="h3 mb-4">تقرير الحضور لنشاط: ${selectedActivity.name}</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <div class="lg:col-span-3">
+                         <div class="bg-white dark:bg-gray-800/50 rounded-lg shadow overflow-y-auto" style="max-height: 400px;">
+                            <table class="w-full text-right">
+                                <thead class="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                                    <tr>
+                                        <th class="p-3 font-bold">#</th>
+                                        <th class="p-3 font-bold">اسم الخادم</th>
+                                        <th class="p-3 font-bold text-center">مرات الحضور</th>
+                                        <th class="p-3 font-bold text-center">النسبة</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+            servantResults.forEach((servant, index) => {
+                reportHTML += `
+                    <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="p-3 font-bold">${index + 1}</td>
+                        <td class="p-3 font-semibold">${servant.name}</td>
+                        <td class="p-3 text-center">${servant.attended} / ${servant.meetings}</td>
+                        <td class="p-3 text-center font-bold ${getPercentageTextColor(servant.percentage)}">${servant.percentage}%</td>
+                    </tr>
+                `;
+            });
+            reportHTML += `
+                                </tbody>
+                            </table>
                         </div>
+                    </div>
+                    <div class="lg:col-span-2 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg shadow">
+                        <h4 class="font-bold mb-2 text-center">توزيع الحضور للنشاط</h4>
+                        <div class="relative h-80"><canvas id="activityReportChart"></canvas></div>
                     </div>
                 </div>
             `;
+            DOMElements.reportContent.innerHTML = reportHTML;
 
-            const activityTotals = {};
-            const activityCounts = {};
-            activities.forEach(act => { 
-                activityTotals[act.key] = 0; 
-                activityCounts[act.key] = 0; 
-            });
-
-            data.forEach(day => {
-                activities.forEach(activity => {
-                    const activityData = day[activity.key];
-                    if (activityData && (activityData.note === null || activityData.note === undefined)) {
-                        activityTotals[activity.key] += activityData.attendees.length;
-                        activityCounts[activity.key]++;
-                    }
-                });
-            });
-
-            const avgAttendance = activities.map(activity => {
-                const totalAttendees = activityTotals[activity.key];
-                const totalMeetings = activityCounts[activity.key];
-                if (totalMeetings === 0 || servants.length === 0) return 0;
-                return Math.round(((totalAttendees / totalMeetings) / servants.length) * 100);
-            });
-
-            if (reportChart1) reportChart1.destroy();
-            if (reportChart2) reportChart2.destroy();
-
-            const ctxBar = document.getElementById('reportAverageChartBar').getContext('2d');
-            reportChart1 = new Chart(ctxBar, { 
-                type: 'bar', 
-                data: { 
-                    labels: activities.map(a => a.name), 
-                    datasets: [{ 
-                        label: 'متوسط نسبة الحضور', 
-                        data: avgAttendance, 
-                        backgroundColor: activities.map(a => a.color),
-                        borderColor: activities.map(a => a.borderColor),
-                        borderWidth: 1 
-                    }] 
-                }, 
-                options: { 
-                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%' } } }, 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } }
-                } 
-            });
-            
-            const totalAttendanceSum = Object.values(activityTotals).reduce((a, b) => a + b, 0);
-            const doughnutData = totalAttendanceSum > 0 ? activities.map(a => activityTotals[a.key]) : activities.map(() => 1);
-            const ctxDoughnut = document.getElementById('reportAverageChartDoughnut').getContext('2d');
-            reportChart2 = new Chart(ctxDoughnut, {
-                type: 'doughnut',
+            if (activityReportChart) activityReportChart.destroy();
+            const ctx = document.getElementById('activityReportChart').getContext('2d');
+            activityReportChart = new Chart(ctx, {
+                type: 'bar',
                 data: {
-                    labels: activities.map(a => a.name),
+                    labels: servantResults.map(s => s.name),
                     datasets: [{
-                        label: 'توزيع الحضور',
-                        data: doughnutData,
-                        backgroundColor: activities.map(a => a.color),
-                        borderColor: '#ffffff',
-                        borderWidth: 2,
+                        label: `نسبة حضور ${selectedActivity.name}`,
+                        data: servantResults.map(s => s.percentage),
+                        backgroundColor: selectedActivity.color,
+                        borderColor: selectedActivity.borderColor,
+                        borderWidth: 1
                     }]
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { padding: 10 } } }
+                    scales: { x: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%' } } },
+                    plugins: { legend: { display: false } }
                 }
             });
 
-            const activityWithPercentages = activities.map((act, i) => ({ name: act.name, percentage: avgAttendance[i] }));
-            activityWithPercentages.sort((a,b) => b.percentage - a.percentage);
-            const topActivity = activityWithPercentages[0];
-            const bottomActivity = activityWithPercentages[activityWithPercentages.length - 1];
-            
-            document.getElementById('topActivityCard').innerHTML = `<div class="font-bold text-green-800 dark:text-green-200">الأعلى حضوراً</div><div class="text-3xl font-bold my-1 text-green-600">${topActivity.percentage}%</div><div class="text-sm text-gray-500">${topActivity.name}</div>`;
-            document.getElementById('bottomActivityCard').innerHTML = `<div class="font-bold text-red-800 dark:text-red-200">الأقل حضوراً</div><div class="text-3xl font-bold my-1 text-red-600">${bottomActivity.percentage}%</div><div class="text-sm text-gray-500">${bottomActivity.name}</div>`;
-
             DOMElements.reportOutput.classList.remove('hidden-view');
-        };
+        }
 
         // --- Backup and Restore Functions ---
         async function backupData() {
@@ -2335,61 +2389,64 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                         `;
 
                         showConfirm("تأكيد الاستعادة", confirmationMessage, async () => {
-                            await authReady;
                             showLoading(true);
-                            const { servants, attendance } = backupObject.data;
-                            if (isLocalMode) {
-                                saveLocalServants(servants, currentServiceName);
-                                saveLocalAttendance(attendance, currentServiceName);
-                                await loadServants();
-                                await loadAttendanceForYear(new Date().getFullYear());
-                                showMessage("تم استعادة البيانات بنجاح!");
-                            } else {
-                                const servantsColRef = collection(db, 'services', currentServiceName, 'servants');
-                                const attendanceColRef = collection(db, 'services', currentServiceName, 'attendance');
+                            try {
+                                await authReady;
+                                const { servants, attendance } = backupObject.data;
+                                if (isLocalMode) {
+                                    saveLocalServants(servants, currentServiceName);
+                                    saveLocalAttendance(attendance, currentServiceName);
+                                    await loadServants();
+                                    await loadAttendanceForYear(new Date().getFullYear());
+                                } else {
+                                    const servantsColRef = collection(db, 'services', currentServiceName, 'servants');
+                                    const attendanceColRef = collection(db, 'services', currentServiceName, 'attendance');
 
-                                const deleteBatch = writeBatch(db);
-                                const existingServants = await getDocs(servantsColRef);
-                                existingServants.forEach(doc => deleteBatch.delete(doc.ref));
-                                const existingAttendance = await getDocs(attendanceColRef);
-                                existingAttendance.forEach(doc => deleteBatch.delete(doc.ref));
-                                await deleteBatch.commit();
+                                    const deleteBatch = writeBatch(db);
+                                    const existingServants = await getDocs(servantsColRef);
+                                    existingServants.forEach(doc => deleteBatch.delete(doc.ref));
+                                    const existingAttendance = await getDocs(attendanceColRef);
+                                    existingAttendance.forEach(doc => deleteBatch.delete(doc.ref));
+                                    await deleteBatch.commit();
 
-                                const idMap = {};
-                                const addServantsBatch = writeBatch(db);
-                                for (const servant of servants) {
-                                    const oldId = servant.id;
-                                    const { id, ...servantData } = servant;
-                                    const newDocRef = doc(servantsColRef);
-                                    idMap[oldId] = newDocRef.id;
-                                    addServantsBatch.set(newDocRef, servantData);
-                                }
-                                await addServantsBatch.commit();
-
-                                const addAttendanceBatch = writeBatch(db);
-                                for (const [date, attendanceData] of Object.entries(attendance)) {
-                                    const correctedData = { ...attendanceData };
-                                    for (const activityKey in correctedData) {
-                                        if (correctedData[activityKey] && Array.isArray(correctedData[activityKey].attendees)) {
-                                            correctedData[activityKey].attendees = correctedData[activityKey].attendees
-                                                .map(oldId => idMap[oldId])
-                                                .filter(newId => newId); // Filter out any undefined IDs
-                                        }
+                                    const idMap = {};
+                                    const addServantsBatch = writeBatch(db);
+                                    for (const servant of servants) {
+                                        const oldId = servant.id;
+                                        const { id, ...servantData } = servant;
+                                        const newDocRef = doc(servantsColRef);
+                                        idMap[oldId] = newDocRef.id;
+                                        addServantsBatch.set(newDocRef, servantData);
                                     }
-                                    const newDocRef = doc(attendanceColRef, date);
-                                    addAttendanceBatch.set(newDocRef, correctedData);
-                                }
-                                await addAttendanceBatch.commit();
+                                    await addServantsBatch.commit();
 
+                                    const addAttendanceBatch = writeBatch(db);
+                                    for (const [date, attendanceData] of Object.entries(attendance)) {
+                                        const correctedData = { ...attendanceData };
+                                        for (const activityKey in correctedData) {
+                                            if (correctedData[activityKey] && Array.isArray(correctedData[activityKey].attendees)) {
+                                                correctedData[activityKey].attendees = correctedData[activityKey].attendees
+                                                    .map(oldId => idMap[oldId])
+                                                    .filter(newId => newId); // Filter out any undefined IDs
+                                            }
+                                        }
+                                        const newDocRef = doc(attendanceColRef, date);
+                                        addAttendanceBatch.set(newDocRef, correctedData);
+                                    }
+                                    await addAttendanceBatch.commit();
+                                }
                                 showMessage("تم استعادة البيانات بنجاح!");
+                            } catch (restoreError) {
+                                console.error("Critical error during data restore:", restoreError);
+                                showMessage("حدث خطأ فادح أثناء استعادة البيانات. قد تكون البيانات غير مكتملة.", true);
+                            } finally {
+                                showLoading(false);
                             }
-                            showLoading(false);
                         });
 
                     } catch (error) {
                         console.error("Restore failed:", error);
                         showMessage("فشل استعادة البيانات. تأكد من أن الملف صحيح.", true);
-                        showLoading(false);
                     }
                 };
                 reader.readAsText(file);
@@ -2503,6 +2560,48 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             });
             
             return upcoming.sort((a, b) => a.daysUntil - b.daysUntil).slice(0, limit);
+        }
+        
+        function calculateConsecutiveAbsences(servants, attendanceData) {
+            const allDates = Object.keys(attendanceData).sort();
+            const flaggedServants = [];
+
+            servants.forEach(servant => {
+                activities.forEach(activity => {
+                    if (activity.key === 'apology') return;
+
+                    const activityDates = allDates.filter(date => 
+                        attendanceData[date] && attendanceData[date][activity.key] && 
+                        (attendanceData[date][activity.key].note === null || attendanceData[date][activity.key].note === undefined)
+                    );
+
+                    if (activityDates.length < 3) return;
+
+                    let consecutiveAbsences = 0;
+                    let maxStreak = 0;
+
+                    for (const date of activityDates) {
+                        const isPresent = attendanceData[date][activity.key].attendees.includes(servant.id);
+                        if (isPresent) {
+                            maxStreak = Math.max(maxStreak, consecutiveAbsences);
+                            consecutiveAbsences = 0;
+                        } else {
+                            consecutiveAbsences++;
+                        }
+                    }
+                    maxStreak = Math.max(maxStreak, consecutiveAbsences); // Check streak at the end of the loop
+
+                    if (maxStreak >= 3) {
+                        flaggedServants.push({
+                            name: servant.name,
+                            activity: activity.name,
+                            count: maxStreak,
+                        });
+                    }
+                });
+            });
+
+            return flaggedServants;
         }
 
         async function updateHomePageDashboard() {
@@ -2640,8 +2739,10 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     if (serviceActivity.note) {
                         lastFridayAbsenceContainer.innerHTML = `<p class="text-yellow-600 dark:text-yellow-400 font-semibold">تم إلغاء الخدمة يوم الجمعة الماضية.</p>`;
                     } else {
-                        const attendees = new Set(serviceActivity.attendees || []);
+            const attendees = new Set(serviceActivity.attendees || []);
                         const absentees = servantsCache.filter(servant => !attendees.has(servant.id));
+                        // استخلاص معرفات الخدام المعتذرين
+                        const apologizedIds = new Set(lastFridayData.apology?.attendees || []);
                         
                         lastFridayAbsenceCountContainer.innerHTML = `
                             <span class="font-bold text-xl ${absentees.length > 0 ? 'text-red-500' : 'text-green-500'}">${absentees.length}</span>
@@ -2651,10 +2752,22 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                         if (absentees.length > 0) {
                             let listHTML = `<div class="overflow-y-auto" style="max-height: 140px;"><ul class="pr-2">`;
                             absentees.forEach(servant => {
-                                listHTML += `<li class="font-semibold text-red-700 dark:text-red-400 flex items-center p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"><i class="fas fa-times-circle text-red-400 ml-3 flex-shrink-0"></i><span class="truncate">${servant.name}</span></li>`;
+                                const isApology = apologizedIds.has(servant.id);
+                                const apologyBadge = isApology 
+                                    ? '<span class="text-xs bg-gray-500 text-white rounded-full px-2 py-0.5 mr-auto">معتذر</span>' 
+                                    : '';
+
+                                listHTML += `
+                                    <li class="font-semibold text-red-700 dark:text-red-400 flex items-center p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
+                                        <i class="fas fa-times-circle text-red-400 ml-3 flex-shrink-0"></i>
+                                        <span class="truncate">${servant.name}</span>
+                                        ${apologyBadge}
+                                    </li>`;
                             });
                             listHTML += `</ul></div>`;
                             lastFridayAbsenceContainer.innerHTML = listHTML;
+// ...
+
                         } else {
                             lastFridayAbsenceContainer.innerHTML = `<p class="text-green-600 dark:text-green-400 font-semibold flex items-center mt-2"><i class="fas fa-check-circle ml-2"></i>لا يوجد غياب! كل الخدام حضروا الخدمة.</p>`;
                         }
@@ -2693,6 +2806,23 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                         </div>
                     `;
                 });
+                
+                // [NEW] Calculate and display consecutive absences
+                const consecutiveAbsences = calculateConsecutiveAbsences(servantsCache, attendanceObject);
+                const consecutiveAbsenceContainer = DOMElements.consecutiveAbsenceStat;
+                if (consecutiveAbsences.length > 0) {
+                    consecutiveAbsenceContainer.innerHTML = consecutiveAbsences.map(item => `
+                        <div class="p-2.5 rounded-lg flex justify-between items-center bg-orange-100 dark:bg-orange-900/50">
+                            <div>
+                                <p class="font-semibold text-sm text-orange-800 dark:text-orange-200">${item.name}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">غياب عن ${item.activity}</p>
+                            </div>
+                            <div class="text-orange-600 dark:text-orange-400 font-bold text-sm bg-white dark:bg-gray-700 px-2 py-1 rounded-full">${item.count} مرات</div>
+                        </div>
+                    `).join('');
+                } else {
+                    consecutiveAbsenceContainer.innerHTML = '<p class="text-gray-500 text-center p-4">لا يوجد خدام بغياب متتالي حالياً.</p>';
+                }
             }
         }
 
@@ -3917,6 +4047,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     if (!isComparison) {
                         DOMElements.reportOutput.classList.add('hidden-view');
                         DOMElements.servantSelectorContainer.classList.toggle('hidden-view', currentReportType !== 'individual');
+                        DOMElements.activitySelectorContainer.classList.toggle('hidden-view', currentReportType !== 'activity');
                     }
                 }
             });
@@ -4005,6 +4136,8 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 exportPdfBtn: document.getElementById('exportPdfBtn'),
                 reportServantSelector: document.getElementById('reportServantSelector'),
                 servantSelectorContainer: document.getElementById('servantSelectorContainer'),
+                activitySelectorContainer: document.getElementById('activitySelectorContainer'),
+                reportActivitySelector: document.getElementById('reportActivitySelector'),
                 noActivityCheck: document.getElementById('noActivityCheck'),
                 noActivityLabel: document.getElementById('noActivityLabel'),
                 noActivityReason: document.getElementById('noActivityReason'),
@@ -4019,6 +4152,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 lastFridayAbsenceStat: document.getElementById('lastFridayAbsenceStat'),
                 lastFridayAbsenceCount: document.getElementById('lastFridayAbsenceCount'),
                 lastFridayStatusContainer: document.getElementById('lastFridayStatusContainer'),
+                consecutiveAbsenceStat: document.getElementById('consecutiveAbsenceStat'),
                 quickAddServant: document.getElementById('quickAddServant'),
                 quickGoToAttendance: document.getElementById('quickGoToAttendance'),
                 serviceDashboardContainer: document.getElementById('serviceDashboardContainer'),
@@ -4083,4 +4217,3 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
     </script>
 </body>
 </html>
-
