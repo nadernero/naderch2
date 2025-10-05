@@ -56,7 +56,7 @@
             color: var(--color-primary-text);
             transform: translateX(-4px);
         }
-        .report-tab.active, .activity-filter-btn.active {
+        .report-tab.active {
             border-color: var(--color-primary);
             background-color: var(--color-primary);
             color: white;
@@ -192,6 +192,22 @@
             border-radius: 50% 50% 0 0;
             box-shadow: 0 -2px 2px rgba(0,0,0,0.2);
         }
+
+        /* [NEW] Styles for Absence Follow-up Filters */
+        .activity-filter-btn {
+            transition: all 0.2s ease-in-out;
+            border: 2px solid transparent;
+        }
+        .activity-filter-btn.active {
+            transform: scale(1.1);
+            box-shadow: 0 0 10px var(--color-shadow, rgba(0,0,0,0.3));
+        }
+        .month-filter-checkbox-item:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .dark .month-filter-checkbox-item:hover {
+            background-color: #374151; /* gray-700 */
+        }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
@@ -312,13 +328,32 @@
                                         <!-- Activity status will be populated here -->
                                     </div>
                                 </div>
-                                <!-- [NEW] Consecutive Absences Card -->
+                                <!-- [MODIFIED] Absence Follow-up Card -->
                                 <div class="lg:col-span-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                                    <h3 class="font-bold text-orange-600 dark:text-orange-400 mb-2 text-lg flex items-center">
-                                        <i class="fas fa-user-clock mr-2"></i> خدام بحاجة للمتابعة (غياب 3+ مرات متتالية)
-                                    </h3>
-                                    <div id="consecutiveAbsenceStat" class="overflow-y-auto space-y-2" style="max-height: 200px;">
-                                        <!-- Content will be populated by JS -->
+                                    <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+                                        <h3 class="font-bold text-orange-600 dark:text-orange-400 text-lg flex items-center">
+                                            <i class="fas fa-tasks mr-2"></i> متابعة الغياب المخصص
+                                        </h3>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <!-- Month Filter Dropdown -->
+                                            <div class="relative" id="monthFilterContainer">
+                                                <button id="monthFilterBtn" class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-sm font-semibold flex items-center gap-2">
+                                                    <i class="fas fa-calendar-day"></i>
+                                                    <span id="monthFilterBtnText">اختر الشهور</span>
+                                                    <i class="fas fa-chevron-down text-xs"></i>
+                                                </button>
+                                                <div id="monthFilterDropdown" class="hidden-view absolute left-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl z-20 border dark:border-gray-600 p-2 space-y-1">
+                                                    <!-- Month checkboxes populated by JS -->
+                                                </div>
+                                            </div>
+                                            <!-- Activity Filter Buttons -->
+                                            <div id="activityFilterButtons" class="flex items-center gap-1 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg">
+                                                <!-- Activity buttons populated by JS -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="absenceFollowUpResults" class="overflow-y-auto space-y-2" style="max-height: 200px; min-height: 100px;">
+                                        <p class="text-gray-500 text-center p-4">اختر نشاط و شهر واحد على الأقل لبدء البحث.</p>
                                     </div>
                                 </div>
                             </div>
@@ -902,7 +937,11 @@
         let unreadAnnouncementsCache = [];
         let serviceAnnouncementsUnsubscribe = null;
         let calendarEventsUnsubscribe = null;
-let calendarEventsCache = {};
+        let calendarEventsCache = {};
+        // [NEW] State for absence follow-up filters
+        let absenceFilterSelectedMonths = new Set();
+        let absenceFilterSelectedActivity = null;
+
         // Chart instances
         let reportChart1 = null, reportChart2 = null, homeChart = null;
         let adminChart = null, comparisonChart = null, profileChart = null, activityReportChart = null;
@@ -2615,48 +2654,6 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             return upcoming.sort((a, b) => a.daysUntil - b.daysUntil).slice(0, limit);
         }
         
-        function calculateConsecutiveAbsences(servants, attendanceData) {
-            const allDates = Object.keys(attendanceData).sort();
-            const flaggedServants = [];
-
-            servants.forEach(servant => {
-                activities.forEach(activity => {
-                    if (activity.key === 'apology') return;
-
-                    const activityDates = allDates.filter(date => 
-                        attendanceData[date] && attendanceData[date][activity.key] && 
-                        (attendanceData[date][activity.key].note === null || attendanceData[date][activity.key].note === undefined)
-                    );
-
-                    if (activityDates.length < 3) return;
-
-                    let consecutiveAbsences = 0;
-                    let maxStreak = 0;
-
-                    for (const date of activityDates) {
-                        const isPresent = attendanceData[date][activity.key].attendees.includes(servant.id);
-                        if (isPresent) {
-                            maxStreak = Math.max(maxStreak, consecutiveAbsences);
-                            consecutiveAbsences = 0;
-                        } else {
-                            consecutiveAbsences++;
-                        }
-                    }
-                    maxStreak = Math.max(maxStreak, consecutiveAbsences); // Check streak at the end of the loop
-
-                    if (maxStreak >= 3) {
-                        flaggedServants.push({
-                            name: servant.name,
-                            activity: activity.name,
-                            count: maxStreak,
-                        });
-                    }
-                });
-            });
-
-            return flaggedServants;
-        }
-
         async function updateHomePageDashboard() {
             await authReady;
             DOMElements.serviceDashboardContainer.classList.toggle('hidden-view', isGeneralSecretaryMode);
@@ -2860,22 +2857,9 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     `;
                 });
                 
-                // [NEW] Calculate and display consecutive absences
-                const consecutiveAbsences = calculateConsecutiveAbsences(servantsCache, attendanceObject);
-                const consecutiveAbsenceContainer = DOMElements.consecutiveAbsenceStat;
-                if (consecutiveAbsences.length > 0) {
-                    consecutiveAbsenceContainer.innerHTML = consecutiveAbsences.map(item => `
-                        <div class="p-2.5 rounded-lg flex justify-between items-center bg-orange-100 dark:bg-orange-900/50">
-                            <div>
-                                <p class="font-semibold text-sm text-orange-800 dark:text-orange-200">${item.name}</p>
-                                <p class="text-xs text-gray-500 dark:text-gray-400">غياب عن ${item.activity}</p>
-                            </div>
-                            <div class="text-orange-600 dark:text-orange-400 font-bold text-sm bg-white dark:bg-gray-700 px-2 py-1 rounded-full">${item.count} مرات</div>
-                        </div>
-                    `).join('');
-                } else {
-                    consecutiveAbsenceContainer.innerHTML = '<p class="text-gray-500 text-center p-4">لا يوجد خدام بغياب متتالي حالياً.</p>';
-                }
+                // [NEW] Setup the new follow-up filters
+                setupAbsenceFollowUpFilters();
+                runAbsenceFollowUpFilter(); // Run it once to show the initial message
             }
         }
 
@@ -3583,13 +3567,24 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
         }
         
         async function showUnifiedProfile(servantId, serviceName) {
-            const servant = allServantsCache.find(s => s.id === servantId && s.serviceName === serviceName);
-            if (!servant) return;
-
+            let servant;
+            let servantRecords;
+            
+            // [BUG FIX] Use correct data source based on user mode
+            if (isGeneralSecretaryMode) {
+                servant = allServantsCache.find(s => s.id === servantId && s.serviceName === serviceName);
+                if (!servant) return;
+                servantRecords = allAttendanceCache.filter(rec => rec.serviceName === servant.serviceName);
+            } else {
+                servant = servantsCache.find(s => s.id === servantId);
+                if (!servant) return;
+                // Fetch attendance data on-demand to ensure it's available and fresh
+                const attendanceObject = await fetchData('attendance', currentServiceName);
+                servantRecords = Object.entries(attendanceObject).map(([date, data]) => ({ date, ...data }));
+            }
+            
             const activityBreakdown = {};
             activities.forEach(act => activityBreakdown[act.key] = { attended: 0, possible: 0 });
-
-            const servantRecords = allAttendanceCache.filter(rec => rec.serviceName === servant.serviceName);
             
             servantRecords.forEach(item => {
                  activities.forEach(act => {
@@ -3792,6 +3787,78 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             });
         }
         
+        // [NEW] Setup function for absence follow-up filters
+        function setupAbsenceFollowUpFilters() {
+            const monthDropdown = DOMElements.monthFilterDropdown;
+            const months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+            let dropdownHTML = `
+                <div class="flex items-center p-1 border-b dark:border-gray-600 mb-1 month-filter-checkbox-item">
+                    <input type="checkbox" id="month-filter-all" class="w-4 h-4 text-cyan-600 bg-gray-100 border-gray-300 rounded focus:ring-cyan-500 ml-2 cursor-pointer">
+                    <label for="month-filter-all" class="font-bold cursor-pointer w-full">الكل</label>
+                </div>`;
+            months.forEach((month, index) => {
+                dropdownHTML += `
+                    <div class="flex items-center p-1 rounded month-filter-checkbox-item">
+                        <input type="checkbox" id="month-filter-${index}" value="${index}" class="month-filter-checkbox w-4 h-4 text-cyan-600 bg-gray-100 border-gray-300 rounded focus:ring-cyan-500 ml-2 cursor-pointer">
+                        <label for="month-filter-${index}" class="cursor-pointer w-full text-sm">${month}</label>
+                    </div>`;
+            });
+            monthDropdown.innerHTML = dropdownHTML;
+
+            const activityContainer = DOMElements.activityFilterButtons;
+            const activitiesToFilter = activities.filter(a => ['visiting', 'preparation', 'mass', 'service', 'explanation'].includes(a.key));
+            activityContainer.innerHTML = activitiesToFilter.map(act => `
+                <button class="activity-filter-btn p-1.5 rounded-md" data-activity-key="${act.key}" title="${act.name}" style="background-color: ${act.color}; --color-shadow: ${act.borderColor};">
+                    <i class="fas ${act.icon} text-white text-lg w-6 text-center"></i>
+                </button>
+            `).join('');
+        }
+        
+        // [NEW] Logic to run the custom absence filter
+        async function runAbsenceFollowUpFilter() {
+            const resultsContainer = DOMElements.absenceFollowUpResults;
+            if (!absenceFilterSelectedActivity || absenceFilterSelectedMonths.size === 0) {
+                resultsContainer.innerHTML = '<p class="text-gray-500 text-center p-4">اختر نشاط و شهر واحد على الأقل لبدء البحث.</p>';
+                return;
+            }
+
+            const absenceResults = [];
+            const filteredAttendance = Object.entries(attendanceYearCache).filter(([date, data]) => {
+                const month = new Date(date).getMonth(); // 0-11
+                return absenceFilterSelectedMonths.has(month);
+            });
+            
+            servantsCache.forEach(servant => {
+                let absenceCount = 0;
+                filteredAttendance.forEach(([date, dayData]) => {
+                    const activityData = dayData[absenceFilterSelectedActivity];
+                    if (activityData && (activityData.note === null || activityData.note === undefined)) {
+                        if (!activityData.attendees.includes(servant.id)) {
+                            absenceCount++;
+                        }
+                    }
+                });
+
+                if (absenceCount > 0) {
+                    absenceResults.push({ name: servant.name, count: absenceCount });
+                }
+            });
+
+            absenceResults.sort((a, b) => b.count - a.count);
+
+            if (absenceResults.length > 0) {
+                resultsContainer.innerHTML = absenceResults.map(item => `
+                    <div class="p-2.5 rounded-lg flex justify-between items-center bg-orange-100 dark:bg-orange-900/50">
+                        <p class="font-semibold text-sm text-orange-800 dark:text-orange-200">${item.name}</p>
+                        <div class="text-orange-600 dark:text-orange-400 font-bold text-sm bg-white dark:bg-gray-700 px-2 py-1 rounded-full">${item.count} غياب</div>
+                    </div>
+                `).join('');
+            } else {
+                resultsContainer.innerHTML = '<p class="text-gray-500 text-center p-4">لا يوجد غياب مطابق لمعايير البحث.</p>';
+            }
+        }
+
+
         // --- EVENT LISTENERS INITIALIZATION ---
         function initializeEventListeners() {
             // Main navigation
@@ -4129,6 +4196,50 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.exportPngBtn.addEventListener('click', exportAsImage);
             DOMElements.exportPdfBtn.addEventListener('click', exportAsPdf);
             
+            // [NEW] Absence Follow-up Filter Listeners
+            DOMElements.monthFilterBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                DOMElements.monthFilterDropdown.classList.toggle('hidden-view');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!DOMElements.monthFilterContainer.contains(e.target)) {
+                    DOMElements.monthFilterDropdown.classList.add('hidden-view');
+                }
+            });
+            
+            DOMElements.monthFilterDropdown.addEventListener('change', (e) => {
+                const checkbox = e.target;
+                if (checkbox.id === 'month-filter-all') {
+                    const allCheckboxes = DOMElements.monthFilterDropdown.querySelectorAll('.month-filter-checkbox');
+                    allCheckboxes.forEach(cb => cb.checked = checkbox.checked);
+                }
+
+                absenceFilterSelectedMonths.clear();
+                const checkedMonths = DOMElements.monthFilterDropdown.querySelectorAll('.month-filter-checkbox:checked');
+                checkedMonths.forEach(cb => absenceFilterSelectedMonths.add(parseInt(cb.value)));
+
+                if (absenceFilterSelectedMonths.size === 12) {
+                     DOMElements.monthFilterDropdown.querySelector('#month-filter-all').checked = true;
+                } else {
+                     DOMElements.monthFilterDropdown.querySelector('#month-filter-all').checked = false;
+                }
+                
+                DOMElements.monthFilterBtnText.textContent = absenceFilterSelectedMonths.size > 0 ? `${absenceFilterSelectedMonths.size} شهور مختارة` : 'اختر الشهور';
+                runAbsenceFollowUpFilter();
+            });
+
+            DOMElements.activityFilterButtons.addEventListener('click', (e) => {
+                const button = e.target.closest('.activity-filter-btn');
+                if (button) {
+                    DOMElements.activityFilterButtons.querySelectorAll('.activity-filter-btn').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    absenceFilterSelectedActivity = button.dataset.activityKey;
+                    runAbsenceFollowUpFilter();
+                }
+            });
+
+
             // Theme Toggle Listener
             DOMElements.themeCheckbox.addEventListener('change', toggleTheme);
 
@@ -4136,7 +4247,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.hamburgerBtn.addEventListener('click', () => {
                 DOMElements.sidebar.classList.remove('translate-x-full');
                 DOMElements.sidebarOverlay.classList.remove('hidden');
-            });68
+            });
             DOMElements.sidebarOverlay.addEventListener('click', () => {
                 DOMElements.sidebar.classList.add('translate-x-full');
                 DOMElements.sidebarOverlay.classList.add('hidden');
@@ -4269,8 +4380,14 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 bulletinBoardTitle: document.getElementById('bulletinBoardTitle'),
                 loadMoreAnnouncementsContainer: document.getElementById('loadMoreAnnouncementsContainer'),
                 loadMoreAnnouncementsBtn: document.getElementById('loadMoreAnnouncementsBtn'),
-                 serviceAnnouncementsBadge: document.getElementById('serviceAnnouncementsBadge'),
-
+                serviceAnnouncementsBadge: document.getElementById('serviceAnnouncementsBadge'),
+                // [FIX] Absence Follow-up Filter elements
+                monthFilterContainer: document.getElementById('monthFilterContainer'),
+                monthFilterBtn: document.getElementById('monthFilterBtn'),
+                monthFilterDropdown: document.getElementById('monthFilterDropdown'),
+                monthFilterBtnText: document.getElementById('monthFilterBtnText'),
+                activityFilterButtons: document.getElementById('activityFilterButtons'),
+                absenceFollowUpResults: document.getElementById('absenceFollowUpResults'),
             };
 
             initializeFirebase();
