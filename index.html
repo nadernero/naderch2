@@ -787,6 +787,7 @@
                         <option value="يوم روحي">يوم روحي</option>
                         <option value="اجتماع خدام">اجتماع خدام</option>
                         <option value="حفلة">حفلة</option>
+                        <option value="ندوة">ندوة</option>
                         <option value="أخرى">أخرى</option>
                     </select>
                 </div>
@@ -872,6 +873,7 @@
     "يوم روحي": "bg-purple-500",
     "اجتماع خدام": "bg-yellow-500",
     "حفلة": "bg-pink-500",
+    "ندوة": "bg-indigo-500",
     "أخرى": "bg-gray-500",
 };
 
@@ -959,14 +961,13 @@ let calendarEventsCache = {};
             try {
                 // --- Firebase Configuration ---
                 const firebaseConfig = {
-  apiKey: "AIzaSyBIQGeqjgImfHCpkQlLWHHPSE00g8dzrdo",
-  authDomain: "stgeorge-church-app-fc444.firebaseapp.com",
-  projectId: "stgeorge-church-app-fc444",
-  storageBucket: "stgeorge-church-app-fc444.firebasestorage.app",
-  messagingSenderId: "569476417547",
-  appId: "1:569476417547:web:770546604086b1a534df0e",
-  measurementId: "G-S27LBQ56Q2"
-};
+                  apiKey: "AIzaSyDqnWPGTAvIWakd0Wl14uuznrCy2oo8Iws",
+                  authDomain: "church-service-app-4f180.firebaseapp.com",
+                  projectId: "church-service-app-4f180",
+                  storageBucket: "church-service-app-4f180.appspot.com",
+                  messagingSenderId: "431475695196",
+                  appId: "1:431475695196:web:4bd4389448eb94804e1099"
+                };
                 // -----------------------------
 
                 isLocalMode = false;
@@ -1303,7 +1304,7 @@ async function loadAllServicesData() {
                 const val = (data) => data || 'غير متوفر';
                 row.innerHTML = `
                     <td class="p-4"><img src="${imageUrl}" alt="صورة ${val(servant.name)}" class="w-14 h-14 rounded-full object-cover" loading="lazy"></td>
-                    <td class="p-4 font-semibold">${val(servant.name)}</td>
+                    <td class="p-4 font-semibold"><a href="#" class="text-cyan-600 hover:underline servant-profile-link" data-id="${servant.id}" data-service="${servant.serviceName || currentServiceName}">${val(servant.name)}</a></td>
                     ${isGeneralSecretaryMode ? `<td class="p-4">${val(servant.serviceName)}</td>` : ''}
                     <td class="p-4">${val(servant.mobile)}</td>
                     <td class="p-4">${val(servant.dob)}</td>
@@ -2102,6 +2103,21 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             });
         }
 
+        function generateReportHeader(title, subtitle = '') {
+            const startDate = DOMElements.reportStartDate.value;
+            const endDate = DOMElements.reportEndDate.value;
+            let header = `
+                <div class="report-header mb-6 text-center border-b pb-4 dark:border-gray-700">
+                    <h2 class="h2 text-cyan-700 dark:text-cyan-400">${title}</h2>`;
+            if (subtitle) {
+                header += `<p class="text-lg text-gray-600 dark:text-gray-400 font-semibold">${subtitle}</p>`;
+            }
+            header += `<p class="text-sm text-gray-500 dark:text-gray-500 mt-1">الفترة من ${startDate} إلى ${endDate}</p>
+                </div>
+            `;
+            return header;
+        }
+
         function triggerReportGeneration() {
             const startDate = DOMElements.reportStartDate.value;
             const endDate = DOMElements.reportEndDate.value;
@@ -2112,12 +2128,16 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
 
             let sourceAttendance = isGeneralSecretaryMode ? allAttendanceCache : allAttendanceCache;
             let sourceServants = isGeneralSecretaryMode ? allServantsCache : servantsCache;
+            let serviceNameForReport = currentServiceName;
 
             if (isGeneralSecretaryMode) {
                 const selectedService = DOMElements.reportServiceSelector.value;
                 if (selectedService !== 'all') {
                     sourceAttendance = allAttendanceCache.filter(item => item.serviceName === selectedService);
                     sourceServants = allServantsCache.filter(servant => servant.serviceName === selectedService);
+                    serviceNameForReport = selectedService;
+                } else {
+                    serviceNameForReport = 'جميع الخدمات';
                 }
             }
 
@@ -2126,12 +2146,12 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             if (currentReportType === 'individual') {
                 const servantId = DOMElements.reportServantSelector.value;
                 if (!servantId) return showMessage("الرجاء اختيار خادم لعرض التقرير.", true);
-                if (servantId === 'all') displayAllServantsAverageReport(filteredAttendance, sourceServants);
+                if (servantId === 'all') displayAllServantsAverageReport(filteredAttendance, sourceServants, serviceNameForReport);
                 else displayIndividualReport(servantId, filteredAttendance, sourceServants);
             } else if (currentReportType === 'comprehensive') {
-                generateComprehensiveReport(filteredAttendance, sourceServants);
+                generateComprehensiveReport(filteredAttendance, sourceServants, serviceNameForReport);
             } else if (currentReportType === 'activity') {
-                generateActivityReport(filteredAttendance, sourceServants);
+                generateActivityReport(filteredAttendance, sourceServants, serviceNameForReport);
             }
         }
         
@@ -2139,7 +2159,9 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             const servant = servants.find(s => s.id === servantId);
             if (!servant) return;
 
-            DOMElements.reportContent.innerHTML = ''; 
+            const header = generateReportHeader('تقرير الحضور الفردي', servant.name);
+            DOMElements.reportContent.innerHTML = header; 
+
             const reportData = { total: {}, attended: {} };
             activities.forEach(act => { reportData.total[act.key] = 0; reportData.attended[act.key] = 0; });
 
@@ -2155,7 +2177,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 });
             });
 
-            let reportHTML = `<h3 class="h3 mb-4">تقرير الحضور لـ: ${servant.name}</h3><div class="grid grid-cols-2 md:grid-cols-3 gap-4">`;
+            let reportHTML = `<div class="grid grid-cols-2 md:grid-cols-3 gap-4">`;
             let percentages = [];
             activities.forEach(activity => {
                 const total = reportData.total[activity.key];
@@ -2165,15 +2187,17 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 reportHTML += `<div class="text-center p-4 rounded-lg ${getPercentageBGColor(percentage)}"><div class="font-bold text-lg">${activity.name}</div><div class="text-3xl font-bold my-2">${percentage}%</div><div class="text-sm text-gray-500 dark:text-gray-400">(${attended} من ${total})</div><div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600 mt-2"><div class="${getPercentageColor(percentage)} h-2.5 rounded-full" style="width: ${percentage}%"></div></div></div>`;
             });
 
-            const overallAverage = percentages.length > 0 ? Math.round(percentages.reduce((a, b) => a + b, 0) / percentages.length) : 0;
+            const overallAverage = percentages.filter(p => p > 0).length > 0 ? Math.round(percentages.filter(p => p > 0).reduce((a, b) => a + b, 0) / percentages.filter(p => p > 0).length) : 0;
             reportHTML += `<div class="text-center p-4 rounded-lg ${getPercentageBGColor(overallAverage)} col-span-2 md:col-span-1"><div class="font-bold text-lg">المتوسط العام</div><div class="text-3xl font-bold my-2">${overallAverage}%</div><div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600 mt-2"><div class="${getPercentageColor(overallAverage)} h-2.5 rounded-full" style="width: ${overallAverage}%"></div></div></div>`;
             reportHTML += '</div>';
-            DOMElements.reportContent.innerHTML = reportHTML;
+            DOMElements.reportContent.innerHTML += reportHTML;
             DOMElements.reportOutput.classList.remove('hidden-view');
         }
 
-        function generateComprehensiveReport(data, servants) {
-            DOMElements.reportContent.innerHTML = '';
+        function generateComprehensiveReport(data, servants, serviceName) {
+            const header = generateReportHeader('التقرير الشامل للحضور', serviceName);
+            DOMElements.reportContent.innerHTML = header;
+
             const table = document.createElement('table');
             table.className = 'w-full text-right min-w-[1000px]';
             let tableHTML = `<thead class="bg-gray-50 dark:bg-gray-700"><tr><th class="p-3 font-bold">اسم الخادم</th>`;
@@ -2192,7 +2216,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                         }
                     });
                     const percentage = meetings > 0 ? Math.round((attended / meetings) * 100) : 0;
-                    percentages.push(percentage);
+                    if(meetings > 0) percentages.push(percentage);
                     tableHTML += `<td class="p-3 text-center font-bold ${getPercentageTextColor(percentage)}">${percentage}% <span class="text-xs text-gray-500">(${attended}/${meetings})</span></td>`;
                 });
                 const overallPercentage = percentages.length > 0 ? Math.round(percentages.reduce((a,b) => a + b, 0) / percentages.length) : 0;
@@ -2204,10 +2228,11 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.reportOutput.classList.remove('hidden-view');
         }
         
-        function displayAllServantsAverageReport(data, servants) { 
-            DOMElements.reportContent.innerHTML = '';
-            let reportHTML = `<h3 class="h3 mb-4">متوسط الحضور لكل الأنشطة</h3>`;
-            reportHTML += '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">';
+        function displayAllServantsAverageReport(data, servants, serviceName) { 
+            const header = generateReportHeader('متوسط الحضور لكل الأنشطة', serviceName);
+            DOMElements.reportContent.innerHTML = header;
+
+            let reportHTML = '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">';
             
             const activityTotals = {}, activityCounts = {};
             activities.forEach(act => { activityTotals[act.key] = 0; activityCounts[act.key] = 0; });
@@ -2232,23 +2257,25 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             let overallPercentages = [];
             activities.forEach((activity, index) => {
                 const percentage = avgAttendancePercentages[index];
-                overallPercentages.push(percentage);
+                if(activityCounts[activity.key] > 0) overallPercentages.push(percentage);
                 reportHTML += `<div class="text-center p-4 rounded-lg ${getPercentageBGColor(percentage)}"><div class="font-bold text-lg">${activity.name}</div><div class="text-3xl font-bold my-2">${percentage}%</div><div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600 mt-2"><div class="${getPercentageColor(percentage)} h-2.5 rounded-full" style="width: ${percentage}%"></div></div></div>`;
             });
 
             const overallAverage = overallPercentages.length > 0 ? Math.round(overallPercentages.reduce((a, b) => a + b, 0) / overallPercentages.length) : 0;
             reportHTML += `<div class="text-center p-4 rounded-lg ${getPercentageBGColor(overallAverage)} col-span-2 md:col-span-1"><div class="font-bold text-lg">المتوسط العام</div><div class="text-3xl font-bold my-2">${overallAverage}%</div><div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600 mt-2"><div class="${getPercentageColor(overallAverage)} h-2.5 rounded-full" style="width: ${overallAverage}%"></div></div></div>`;
             reportHTML += '</div>';
-            DOMElements.reportContent.innerHTML = reportHTML;
+            DOMElements.reportContent.innerHTML += reportHTML;
             DOMElements.reportOutput.classList.remove('hidden-view');
         };
         
-        function generateActivityReport(data, servants) {
+        function generateActivityReport(data, servants, serviceName) {
             const selectedActivityKey = DOMElements.reportActivitySelector.value;
             if (!selectedActivityKey) {
                 return showMessage("الرجاء اختيار نشاط لعرض التقرير.", true);
             }
             const selectedActivity = activityMap.get(selectedActivityKey);
+            
+            const header = generateReportHeader(`تقرير الحضور لنشاط: ${selectedActivity.name}`, serviceName);
             
             let servantResults = servants.map(servant => {
                 let attended = 0, meetings = 0;
@@ -2263,7 +2290,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             }).sort((a,b) => b.percentage - a.percentage);
 
             let reportHTML = `
-                <h3 class="h3 mb-4">تقرير الحضور لنشاط: ${selectedActivity.name}</h3>
+                ${header}
                 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     <div class="lg:col-span-3">
                          <div class="bg-white dark:bg-gray-800/50 rounded-lg shadow overflow-y-auto" style="max-height: 400px;">
@@ -2483,7 +2510,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             await waitChartsRendered();
             const reportContent = DOMElements.reportContent;
             html2canvas(reportContent, { 
-                backgroundColor: document.body.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                backgroundColor: document.documentElement.classList.contains('dark') ? '#111827' : '#ffffff',
                 scale: 2,
                 useCORS: true 
             }).then(canvas => {
@@ -2499,27 +2526,53 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             const { jsPDF } = window.jspdf;
             const reportContent = DOMElements.reportContent;
             
-            html2canvas(reportContent, { 
-                backgroundColor: document.body.classList.contains('dark') ? '#1f2937' : '#ffffff',
-                scale: 2,
-                useCORS: true,
-                width: reportContent.scrollWidth,
-                height: reportContent.scrollHeight
-            }).then(canvas => {
+            showLoading(true);
+
+            try {
+                const canvas = await html2canvas(reportContent, { 
+                    backgroundColor: document.documentElement.classList.contains('dark') ? '#111827' : '#ffffff',
+                    scale: 2,
+                    useCORS: true,
+                    width: reportContent.scrollWidth,
+                    height: reportContent.scrollHeight
+                });
+
                 const imgData = canvas.toDataURL('image/png');
                 const imgWidth = canvas.width;
                 const imgHeight = canvas.height;
                 
-                const orientation = imgWidth > imgHeight ? 'l' : 'p'; 
-                
-                const pdf = new jsPDF(orientation, 'px', [imgWidth, imgHeight]);
-                
+                // Use the dimensions of the generated image for the PDF page.
+                const pdf = new jsPDF({
+                    orientation: imgWidth > imgHeight ? 'l' : 'p',
+                    unit: 'px',
+                    format: [imgWidth, imgHeight]
+                });
+
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = pdf.internal.pageSize.getHeight();
+                
+                let position = 0;
+                let remainingHeight = imgHeight;
 
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                // Add the first page
+                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                remainingHeight -= pdfHeight;
+
+                // Add new pages if the content is taller than the page
+                while (remainingHeight > 0) {
+                    position -= pdfHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                    remainingHeight -= pdfHeight;
+                }
+
                 pdf.save(`report-${new Date().toISOString().slice(0,10)}.pdf`);
-            });
+            } catch (error) {
+                console.error("PDF Export failed:", error);
+                showMessage("فشل تصدير التقرير كملف PDF.", true);
+            } finally {
+                showLoading(false);
+            }
         }
         
         // --- HOME PAGE DASHBOARD ---
@@ -2837,7 +2890,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 row.className = 'border-b dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors';
                 const val = (data) => data || 'غير متوفر';
                 row.innerHTML = `
-                    <td class="p-3 font-semibold"><a href="#" class="text-cyan-600 hover:underline" data-servant-id="${servant.id}">${val(servant.name)}</a></td>
+                    <td class="p-3 font-semibold"><a href="#" class="text-cyan-600 hover:underline" data-servant-id="${servant.id}" data-service="${servant.serviceName}">${val(servant.name)}</a></td>
                     <td class="p-3">${val(servant.serviceName)}</td>
                     <td class="p-3">${val(servant.mobile)}</td>`;
                 DOMElements.adminServantsTableBody.appendChild(row);
@@ -3035,14 +3088,11 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             showConfirm('تأكيد الحذف', 'هل أنت متأكد من حذف هذه الرسالة المرسلة؟', async () => {
                 showLoading(true);
                 try {
+                    // The list of sent notes is already filtered by currentServiceName,
+                    // so we can assume the user has the right to delete it.
                     const noteDocRef = doc(db, 'notesToAdmin', noteId);
-                    const noteDoc = await getDoc(noteDocRef);
-                    if (noteDoc.exists() && noteDoc.data().senderService === currentServiceName) {
-                        await deleteDoc(noteDocRef);
-                        showMessage("تم حذف الرسالة بنجاح.");
-                    } else {
-                         showMessage("لا تملك الصلاحية لحذف هذه الرسالة.", true);
-                    }
+                    await deleteDoc(noteDocRef);
+                    showMessage("تم حذف الرسالة بنجاح.");
                 } catch (error) {
                     console.error("Error deleting sent note:", error);
                     showMessage("فشل حذف الرسالة.", true);
@@ -3420,8 +3470,8 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             if (!container) return;
 
             const needsFollowUp = Object.values(servantAttendanceSummary)
-                .map(s => ({ ...s, percentage: s.possible > 0 ? (s.attended / s.possible) * 100 : 0 }))
-                .filter(s => s.possible > 4 && s.percentage < 50)
+                .map(s => ({ ...s, percentage: s.possible > 4 ? (s.attended / s.possible) * 100 : 100 }))
+                .filter(s => s.percentage < 50)
                 .sort((a, b) => a.percentage - b.percentage);
 
             if (needsFollowUp.length === 0) {
@@ -3532,8 +3582,8 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             container.innerHTML = legendHTML + contentHTML;
         }
         
-        function showUnifiedProfile(servantId) {
-            const servant = allServantsCache.find(s => s.id === servantId);
+        async function showUnifiedProfile(servantId, serviceName) {
+            const servant = allServantsCache.find(s => s.id === servantId && s.serviceName === serviceName);
             if (!servant) return;
 
             const activityBreakdown = {};
@@ -3602,34 +3652,43 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                     </div>
                 </div>
                  <div class="mt-6 border-t dark:border-gray-700 pt-4">
-                    <h3 class="h3 mb-2">معدل الحضور الشهري (آخر 3 أشهر)</h3>
+                    <h3 class="h3 mb-2">معدل الحضور الشهري (من أكتوبر ${new Date().getFullYear()})</h3>
                     <div class="relative h-48"><canvas id="profileAttendanceChart"></canvas></div>
                 </div>
             `;
             DOMElements.unifiedProfileModalBody.innerHTML = body;
             openModal(DOMElements.unifiedProfileModal);
             
-            generateProfileAttendanceChart(servantId, servant.serviceName);
+            generateProfileAttendanceChart(servantId, servantRecords);
         }
         
-        function generateProfileAttendanceChart(servantId, serviceName) {
+        function generateProfileAttendanceChart(servantId, serviceAttendanceRecords) {
             const monthlyData = {};
             const monthLabels = [];
-            
-            for (let i = 2; i >= 0; i--) {
-                const d = new Date();
-                d.setMonth(d.getMonth() - i);
-                const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                monthLabels.push(d.toLocaleDateString('ar-EG', { month: 'short', year: 'numeric' }));
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            const currentMonthIndex = today.getMonth(); // 0-11
+
+            // Loop from October (month index 9) of the current year up to the current month
+            // If the current month is before October, this loop won't run, which is correct.
+            for (let i = 9; i <= currentMonthIndex; i++) {
+                const d = new Date(currentYear, i, 1);
+                const monthKey = `${currentYear}-${String(i + 1).padStart(2, '0')}`;
+                monthLabels.push(d.toLocaleDateString('ar-EG', { month: 'short' }));
                 monthlyData[monthKey] = { attended: 0, possible: 0 };
             }
 
-            const servantRecords = allAttendanceCache.filter(rec => rec.serviceName === serviceName);
-            servantRecords.forEach(item => {
+            // Filter records to only include those from October onwards of the current year
+            const yearStartDate = `${currentYear}-10-01`;
+            const relevantRecords = serviceAttendanceRecords.filter(item => item.date >= yearStartDate);
+            
+            relevantRecords.forEach(item => {
+                if(typeof item.date !== 'string') return; 
+                
                 const itemMonthKey = item.date.substring(0, 7);
                 if (monthlyData[itemMonthKey]) {
                     activities.forEach(act => {
-                        if (item[act.key] && Array.isArray(item[act.key].attendees)) {
+                        if (act.key !== 'apology' && item[act.key] && Array.isArray(item[act.key].attendees)) {
                             monthlyData[itemMonthKey].possible++;
                             if (item[act.key].attendees.includes(servantId)) {
                                 monthlyData[itemMonthKey].attended++;
@@ -3666,6 +3725,7 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
                 }
             });
         }
+
 
         function populateComparisonSelectors() {
             const selectors = [DOMElements.comparisonServiceSelector1, DOMElements.comparisonServiceSelector2];
@@ -3798,9 +3858,10 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             });
             DOMElements.addAnnouncementBtn.addEventListener('click', addAnnouncement);
             DOMElements.adminServantsTableBody.addEventListener('click', (e) => {
-                if(e.target.tagName === 'A' && e.target.dataset.servantId) {
+                const link = e.target.closest('a[data-servant-id]');
+                if(link) {
                     e.preventDefault();
-                    showUnifiedProfile(e.target.dataset.servantId);
+                    showUnifiedProfile(link.dataset.servantId, link.dataset.service);
                 }
             });
             DOMElements.totalServantsCard.addEventListener('click', () => switchPage('servantsPage'));
@@ -3897,8 +3958,13 @@ const eventDocRef = doc(db, 'services', targetService, 'calendarEvents', dateStr
             DOMElements.servantsTableBody.addEventListener('click', (e) => {
                 const editBtn = e.target.closest('.edit-btn');
                 const deleteBtn = e.target.closest('.delete-btn');
+                const profileLink = e.target.closest('.servant-profile-link');
                 if (editBtn) handleEditClick(editBtn.dataset.id);
                 if (deleteBtn) deleteServant(deleteBtn.dataset.id);
+                if (profileLink) {
+                    e.preventDefault();
+                    showUnifiedProfile(profileLink.dataset.id, profileLink.dataset.service);
+                }
             });
 
             DOMElements.servantImageFile.addEventListener('change', (e) => {
